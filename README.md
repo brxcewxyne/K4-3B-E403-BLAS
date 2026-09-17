@@ -35,10 +35,10 @@ Tài liệu kỹ thuật đầy đủ nằm ở `README_APP.md`.
 
 | Họ và Tên | Mã Học Viên | Vai trò chính | Phần việc đảm nhiệm trong dự án |
 |---|---|---|---|
-|  |  |  |  |
-|  |  |  |  |
-|  |  |  |  |
-|  |  |  |  |
+|Đinh Tuấn Long|  |  |  |
+|Trần Quốc Sáng|  |  |  |
+|Lê Duy Bảo|  |  |  |
+|Phùng Thành An|  |  |  |
 
 > Nhóm copy nguyên file README này về repo của mình, rồi điền bảng trên. Cột **Phần việc đảm nhiệm** ghi càng cụ thể càng tốt.
 
