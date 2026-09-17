@@ -3,3 +3,6 @@ __pycache__/
 .env
 node_modules/
 data/
+.next/
+tsconfig.tsbuildinfo
+prisma/dev.db

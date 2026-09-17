@@ -1,3 +1,30 @@
+# LAB GUIDE AI
+
+MVP Next.js cho ứng dụng tổng hợp tài liệu Markdown của bài lab thành `LAB_GUIDE.md` và chatbot hỏi đáp dựa trên guide có nguồn.
+
+## Chạy ứng dụng
+
+```bash
+npm install
+npx prisma generate
+npx prisma migrate dev --name init
+npm run dev
+```
+
+Tạo `.env` từ `.env.example` trước khi chạy:
+
+```env
+AI_API_KEY=
+AI_BASE_URL=
+AI_SUMMARIZE_MODEL=
+AI_CHAT_MODEL=
+DATABASE_URL="file:./dev.db"
+```
+
+Tài liệu kỹ thuật đầy đủ nằm ở `README_APP.md`.
+
+---
+
 # Mini Hackathon AI — Batch 04 · Lớp 3B
 
 **SPEC → Prototype → Demo.** Đây không phải cuộc thi code — đây là cuộc thi **tư duy sản phẩm AI**.

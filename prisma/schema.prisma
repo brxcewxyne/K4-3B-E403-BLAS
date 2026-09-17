@@ -1,0 +1,50 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Guide {
+  id                String           @id @default(cuid())
+  title             String
+  repositoryUrl     String?
+  branch            String?
+  subfolder         String?
+  markdownContent   String
+  structuredContent String
+  status            String
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  sources           SourceDocument[]
+  chatSessions      ChatSession[]
+}
+
+model SourceDocument {
+  id        String   @id @default(cuid())
+  guideId   String
+  path      String
+  content   String
+  createdAt DateTime @default(now())
+  guide     Guide    @relation(fields: [guideId], references: [id], onDelete: Cascade)
+}
+
+model ChatSession {
+  id        String        @id @default(cuid())
+  guideId   String
+  createdAt DateTime      @default(now())
+  guide     Guide         @relation(fields: [guideId], references: [id], onDelete: Cascade)
+  messages  ChatMessage[]
+}
+
+model ChatMessage {
+  id        String      @id @default(cuid())
+  sessionId String
+  role      String
+  content   String
+  sources   String?
+  createdAt DateTime    @default(now())
+  session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+}
