@@ -1,6 +1,8 @@
 .DS_Store
 __pycache__/
 .env
+.env.local
+.env.*.local
 node_modules/
 data/
 .next/
