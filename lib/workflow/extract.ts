@@ -1,13 +1,10 @@
-import { generateJson } from "../ai/client";
+import { createAIRequestSessionId, generateJson } from "../ai/client";
 import { WORKFLOW_SYSTEM_PROMPT } from "../ai/prompts";
 import { chunkSources, excerptFromChunk } from "../sources/chunks";
 import { AppError } from "../shared/api";
 import { labWorkflowSchema } from "../shared/schemas";
 import type { Citation, LabWorkflow, SourceDocument } from "../shared/types";
-
-function sourcePayload(sources: SourceDocument[]) {
-  return sources.map((source) => `===== SOURCE id=${source.id} file=${source.name} path=${source.path} =====\n${source.content}`).join("\n\n");
-}
+import { prepareWorkflowContext } from "./context";
 
 function sanitizeCitation(citation: Citation, sources: SourceDocument[]): Citation | null {
   const source = sources.find((item) => item.id === citation.sourceId) || sources.find((item) => item.name === citation.file || item.path === citation.file);
@@ -31,7 +28,47 @@ export async function extractWorkflow(sources: SourceDocument[], sessionId?: str
   "checkpoints": [{ "title": "string", "requirements": ["string"], "sources": [Citation] }],
   "conflicts": [{ "description": "string", "sources": [Citation] }]
 }`;
-  const result = await generateJson("workflow", WORKFLOW_SYSTEM_PROMPT, `Return JSON matching this schema:\n${schema}\n\n${sourcePayload(sources)}`, sessionId);
+  const stableSessionId = createAIRequestSessionId(sessionId);
+  const attempts = [
+    { mode: "normal" as const, timeoutMs: 40_000 },
+    { mode: "compact" as const, timeoutMs: 14_000 }
+  ];
+  let result: unknown;
+
+  for (let index = 0; index < attempts.length; index += 1) {
+    const attempt = attempts[index];
+    const context = prepareWorkflowContext(sources, attempt.mode);
+    const startedAt = Date.now();
+    console.info("Workflow generation", {
+      sources: context.inputSourceCount,
+      totalCharacters: context.inputCharacters,
+      selectedSources: context.sourceNames,
+      chunks: context.chunks,
+      characters: context.characters,
+      attempt: index + 1,
+      timeoutMs: attempt.timeoutMs
+    });
+    try {
+      result = await generateJson(
+        "workflow",
+        WORKFLOW_SYSTEM_PROMPT,
+        `Schema:\n${schema}\n\nRelevant source chunks:\n${context.payload}`,
+        stableSessionId,
+        { timeoutMs: attempt.timeoutMs, requestLabel: `workflow-attempt-${index + 1}` }
+      );
+      console.info("Workflow generation completed", { attempt: index + 1, durationMs: Date.now() - startedAt });
+      break;
+    } catch (error) {
+      const retryable = error instanceof AppError && (error.code === "AI_TIMEOUT" || error.code === "AI_PROVIDER_UNAVAILABLE");
+      console.warn("Workflow generation attempt failed", { attempt: index + 1, durationMs: Date.now() - startedAt, code: error instanceof AppError ? error.code : "UNKNOWN", retrying: retryable && index === 0 });
+      if (retryable && index === 0) continue;
+      if (error instanceof AppError && error.code === "AI_TIMEOUT") {
+        throw new AppError("AI_TIMEOUT", "Workflow generation took too long. Try again with fewer source files.", 504);
+      }
+      throw error;
+    }
+  }
+
   const parsed = labWorkflowSchema.safeParse(result);
   if (!parsed.success) {
     console.error(parsed.error.flatten());

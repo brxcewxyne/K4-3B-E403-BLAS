@@ -1,0 +1,88 @@
+import { chunkSources, type SourceChunk } from "../sources/chunks";
+import type { SourceDocument } from "../shared/types";
+
+export const WORKFLOW_CONTEXT_CHAR_BUDGET = 56_000;
+export const WORKFLOW_RETRY_CHAR_BUDGET = 24_000;
+
+const PRIORITY_TERMS = [
+  "readme",
+  "guide",
+  "lab",
+  "checkpoint",
+  "setup",
+  "instruction",
+  "assignment",
+  "requirement",
+  "evaluation",
+  "objective"
+];
+const SAFE_EXCLUSIONS = /(?:^|[/_.-])(license|changelog|code[-_ ]of[-_ ]conduct|contributing|security)(?:[/_.-]|$)/i;
+
+type ContextMode = "normal" | "compact";
+
+export type WorkflowContext = {
+  payload: string;
+  characters: number;
+  chunks: number;
+  sourceNames: string[];
+  inputSourceCount: number;
+  inputCharacters: number;
+};
+
+function relevance(value: string) {
+  const normalized = value.toLowerCase();
+  return PRIORITY_TERMS.reduce((score, term) => score + (normalized.includes(term) ? 1 : 0), 0);
+}
+
+function sourceScore(source: SourceDocument) {
+  const filenameScore = relevance(`${source.name} ${source.path}`);
+  const headingScore = relevance(source.headings.join(" "));
+  return filenameScore * 12 + headingScore * 4 + (/readme/i.test(source.name) ? 16 : 0);
+}
+
+function chunkBlock(chunk: SourceChunk, content: string) {
+  return `===== SOURCE id=${chunk.sourceId} file=${chunk.file} path=${chunk.path} section=${chunk.section} =====\n${content}`;
+}
+
+export function prepareWorkflowContext(sources: SourceDocument[], mode: ContextMode = "normal"): WorkflowContext {
+  const nonEmpty = sources.filter((source) => source.content.trim().length > 0);
+  const relevant = nonEmpty.filter((source) => !SAFE_EXCLUSIONS.test(source.path) || sourceScore(source) > 0);
+  const ranked = relevant
+    .map((source, index) => ({ source, index, score: sourceScore(source) }))
+    .sort((a, b) => b.score - a.score || a.index - b.index);
+  const preferred = mode === "compact" && ranked.some((item) => item.score > 0)
+    ? ranked.filter((item) => item.score > 0)
+    : ranked;
+  const documentLimit = mode === "compact" ? 4 : 10;
+  const chunkLimit = mode === "compact" ? 6 : 12;
+  const budget = mode === "compact" ? WORKFLOW_RETRY_CHAR_BUDGET : WORKFLOW_CONTEXT_CHAR_BUDGET;
+  const selectedDocuments = preferred.slice(0, documentLimit);
+  const documentScores = new Map(selectedDocuments.map(({ source, score }) => [source.id, score]));
+  const chunks = chunkSources(selectedDocuments.map(({ source }) => source))
+    .map((chunk, index) => ({ chunk, index, score: (documentScores.get(chunk.sourceId) || 0) * 100 + relevance(chunk.section) * 10 }))
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .slice(0, chunkLimit);
+
+  const blocks: string[] = [];
+  const includedNames = new Set<string>();
+  let characters = 0;
+  for (const { chunk } of chunks) {
+    const header = chunkBlock(chunk, "");
+    const separatorLength = blocks.length ? 2 : 0;
+    const remaining = budget - characters - separatorLength - header.length;
+    if (remaining < 200) break;
+    const block = chunkBlock(chunk, chunk.content.slice(0, remaining));
+    blocks.push(block);
+    characters += separatorLength + block.length;
+    includedNames.add(chunk.file);
+  }
+
+  return {
+    payload: blocks.join("\n\n"),
+    characters,
+    chunks: blocks.length,
+    sourceNames: [...includedNames],
+    inputSourceCount: sources.length,
+    inputCharacters: sources.reduce((sum, source) => sum + source.content.length, 0)
+  };
+}

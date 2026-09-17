@@ -9,6 +9,11 @@ const PROVIDER_NAME = "opencode-go";
 const DEFAULT_BASE_URL = "https://opencode.ai/zen/go/v1";
 const REQUEST_TIMEOUT_MS = 55_000;
 
+type GenerationOptions = {
+  timeoutMs?: number;
+  requestLabel?: string;
+};
+
 function modelEnvironmentName(kind: ModelKind) {
   return kind === "chat" ? "AI_CHAT_MODEL" : "AI_SUMMARIZE_MODEL";
 }
@@ -85,14 +90,29 @@ function providerError(status: number) {
   return new AppError("AI_PROVIDER_ERROR", "The AI provider did not return a successful response.", 502);
 }
 
-function providerSessionId(sessionId?: string) {
+function diagnosticSummary(value: unknown) {
+  if (typeof value === "string") return value.slice(0, 300);
+  if (!value || typeof value !== "object") return "No provider diagnostic";
+  const record = value as { error?: unknown; code?: unknown; message?: unknown };
+  const nested = record.error && typeof record.error === "object" ? record.error as { code?: unknown; message?: unknown } : null;
+  return {
+    code: typeof (nested?.code ?? record.code) === "string" ? nested?.code ?? record.code : undefined,
+    message: typeof (nested?.message ?? record.message) === "string" ? String(nested?.message ?? record.message).slice(0, 300) : undefined
+  };
+}
+
+export function createAIRequestSessionId(sessionId?: string) {
   return sessionId || randomUUID();
 }
 
-async function requestResponsesAPI(kind: ModelKind, system: string, user: string, sessionId?: string) {
+async function requestResponsesAPI(kind: ModelKind, system: string, user: string, sessionId?: string, options: GenerationOptions = {}) {
   const { apiKey, model, baseUrl } = providerConfig(kind);
-  const stableSessionId = providerSessionId(sessionId);
+  const stableSessionId = createAIRequestSessionId(sessionId);
+  const timeoutMs = options.timeoutMs || REQUEST_TIMEOUT_MS;
+  const startedAt = Date.now();
   let response: Response;
+
+  console.info("OpenCode Go request started", { kind, model, timeoutMs, requestLabel: options.requestLabel || kind });
 
   try {
     response = await fetch(`${baseUrl}/responses`, {
@@ -103,7 +123,7 @@ async function requestResponsesAPI(kind: ModelKind, system: string, user: string
         "Content-Type": "application/json",
         "x-opencode-session": stableSessionId
       },
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
       cache: "no-store",
       body: JSON.stringify({
         model,
@@ -116,11 +136,13 @@ async function requestResponsesAPI(kind: ModelKind, system: string, user: string
     });
   } catch (error) {
     const timeout = error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError");
-    console.error("OpenCode Go request failed", { kind, timeout, error: error instanceof Error ? error.message : "Unknown network error" });
+    console.error("OpenCode Go request failed", { kind, timeout, timeoutMs, durationMs: Date.now() - startedAt, requestLabel: options.requestLabel || kind, error: error instanceof Error ? error.message : "Unknown network error" });
     throw timeout
       ? new AppError("AI_TIMEOUT", "The AI provider took too long to respond.", 504)
       : new AppError("AI_PROVIDER_UNAVAILABLE", "The AI provider could not be reached.", 503);
   }
+
+  console.info("OpenCode Go request completed", { kind, status: response.status, durationMs: Date.now() - startedAt, requestLabel: options.requestLabel || kind });
 
   if (!response.ok) {
     let diagnostic: unknown;
@@ -129,7 +151,7 @@ async function requestResponsesAPI(kind: ModelKind, system: string, user: string
       kind,
       status: response.status,
       requestId: response.headers.get("x-request-id"),
-      diagnostic
+      diagnostic: diagnosticSummary(diagnostic)
     });
     throw providerError(response.status);
   }
@@ -147,7 +169,7 @@ async function requestResponsesAPI(kind: ModelKind, system: string, user: string
 
 export async function checkConfiguredModelAvailability(sessionId?: string) {
   const { apiKey, model, baseUrl } = providerConfig("chat");
-  const stableSessionId = providerSessionId(sessionId);
+  const stableSessionId = createAIRequestSessionId(sessionId);
   let response: Response;
 
   try {
@@ -183,6 +205,6 @@ export async function checkConfiguredModelAvailability(sessionId?: string) {
   return { model, available, modelCount: models.length };
 }
 
-export async function generateJson(kind: ModelKind, system: string, user: string, sessionId?: string) {
-  return parseJson(await requestResponsesAPI(kind, system, user, sessionId));
+export async function generateJson(kind: ModelKind, system: string, user: string, sessionId?: string, options?: GenerationOptions) {
+  return parseJson(await requestResponsesAPI(kind, system, user, sessionId, options));
 }

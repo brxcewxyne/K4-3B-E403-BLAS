@@ -28,7 +28,8 @@ export function WorkflowPanel({ workflow, completed, selectedId, loading, error,
     return <aside className="glass-panel workflow-panel centered-state" data-lenis-prevent><div className="state-spinner" /><strong>Generating workflow</strong><p>Extracting ordered steps and source references…</p></aside>;
   }
   if (error) {
-    return <aside className="glass-panel workflow-panel centered-state" data-lenis-prevent><strong>Workflow generation failed</strong><p>{error}</p><button type="button" className="accent-button" onClick={onRetry}>Try again</button></aside>;
+    const timedOut = /timed out|too long/i.test(error);
+    return <aside className="glass-panel workflow-panel centered-state" data-lenis-prevent><strong>{timedOut ? "Workflow generation timed out" : "Workflow generation failed"}</strong><p>{error}</p><button type="button" className="accent-button" onClick={onRetry}>Try again</button></aside>;
   }
   if (!workflow) {
     return <aside className="glass-panel workflow-panel centered-state" data-lenis-prevent><strong>No workflow yet</strong><p>Add materials to generate a grounded lab workflow.</p></aside>;
