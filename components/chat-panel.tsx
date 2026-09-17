@@ -3,37 +3,16 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { ChatMessage } from "@/lib/client-types";
+import { PlusIcon, SendIcon } from "./icons";
+import type { Citation } from "@/lib/shared/types";
 
-type Props = { messages: ChatMessage[]; isThinking: boolean; error: string; sourceCount: number; checkpoint: string; isDemoMode: boolean; onSend: (message: string) => void; onCitationClick: (filename: string) => void; onAddMaterial: () => void; onDismissError: () => void };
+export type UiMessage = { id: string; role: "user" | "assistant"; content: string; citations?: Citation[] };
+type Props = { messages: UiMessage[]; thinking: boolean; error: string; disabled: boolean; sourceCount: number; currentStep?: number; onSend: (value: string) => void; onCitation: (sourceId: string) => void; onAdd: () => void; onDismissError: () => void };
+const prompts = ["What should I do next?", "What are the requirements?", "Am I ready for the next checkpoint?", "Show sources for this step"];
 
-const suggestions = ["What should I do next?", "What are the requirements?", "Am I ready for the next step?", "Show sources for this step"];
-
-export function ChatPanel({ messages, isThinking, error, sourceCount, checkpoint, isDemoMode, onSend, onCitationClick, onAddMaterial, onDismissError }: Props) {
-  const [input, setInput] = useState("");
-  const endRef = useRef<HTMLDivElement>(null);
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }, [messages, isThinking, error]);
-
-  function submit(event: FormEvent) {
-    event.preventDefault();
-    if (!input.trim()) return;
-    onSend(input);
-    setInput("");
-  }
-
-  return <section className="chat-panel" aria-label="Lab guide chat">
-    <div className="chat-header"><div><div className="context-line"><span>{checkpoint}</span><span>•</span><span>AI workspace</span></div><h2>What should I do next?</h2></div><div className="grounded-badge"><span />Grounded in {sourceCount} sources</div></div>
-    <div className="message-list" aria-live="polite"><div className="date-divider"><span>Today</span></div>
-      {messages.length === 0 ? <div className="chat-empty"><div className="empty-orbit">A</div><h3>Ask your lab guide</h3><p>Your answers will be grounded in the materials shown in Sources.</p></div> : messages.map((message) => <article key={message.id} className={`message ${message.role}`}>
-        <div className="message-author"><span className={`message-avatar ${message.role === "assistant" ? "assistant-avatar" : ""}`}>{message.role === "assistant" ? "AI" : "You"}</span><div><strong>{message.role === "assistant" ? "Lab Guide" : "You"}</strong><span>{message.role === "assistant" ? message.grounded ? "Source-backed answer" : "Answer" : "Student"}</span></div></div>
-        <div className="message-body"><ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
-          {message.role === "assistant" && message.citations?.length ? <div className="citation-area"><div className="citation-heading">Sources</div><div className="citation-grid">{message.citations.map((citation, index) => <button key={`${message.id}-${citation.filename}-${citation.section}-${index}`} type="button" className="citation-card" onClick={() => onCitationClick(citation.filename)}><span className="citation-file"><span>MD</span>{citation.filename}</span><small>{citation.section}{citation.line ? ` · ${citation.line}` : ""}</small>{citation.quote ? <q>{citation.quote}</q> : <span className="citation-note">Open source details</span>}</button>)}</div></div> : null}
-          {message.role === "assistant" && message.grounded === false ? <div className="ungrounded-note">No source evidence was returned for this answer.</div> : null}
-        </div>
-      </article>)}
-      {isThinking ? <div className="thinking-row" role="status"><span className="message-avatar assistant-avatar">AI</span><div className="thinking-bubble"><i /><i /><i /><span>Checking your lab sources…</span></div></div> : null}
-      {error ? <div className="inline-error" role="alert"><div><strong>Couldn’t reach the guide</strong><p>{error}</p></div><button type="button" onClick={onDismissError}>Dismiss</button></div> : null}<div ref={endRef} />
-    </div>
-    <div className="chat-composer-wrap"><div className="suggestions">{suggestions.map((suggestion) => <button key={suggestion} type="button" onClick={() => onSend(suggestion)} disabled={isThinking}>{suggestion}</button>)}</div><form className="chat-composer" onSubmit={submit}><button className="composer-add" type="button" onClick={onAddMaterial} aria-label="Add materials" title="Add materials">+</button><textarea value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder="Ask about requirements, next steps, commands, checkpoints…" rows={1} aria-label="Message the lab guide" disabled={isThinking} /><button className="send-button" type="submit" disabled={!input.trim() || isThinking}>{isThinking ? "Working…" : "Send"}<span aria-hidden="true">↑</span></button></form><div className="composer-note">{isDemoMode ? "Deterministic demo responses · No backend requests are sent." : "Answers use only the materials loaded in this workspace."} Enter to send · Shift+Enter for a new line.</div></div>
-  </section>;
+export function ChatPanel({ messages, thinking, error, disabled, sourceCount, currentStep, onSend, onCitation, onAdd, onDismissError }: Props) {
+  const [value, setValue] = useState(""); const endRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }, [messages, thinking, error]);
+  function submit(event: FormEvent) { event.preventDefault(); if (!value.trim() || thinking || disabled) return; onSend(value.trim()); setValue(""); }
+  return <section className="glass-panel chat-panel"><header className="chat-head"><div><span className="kicker">Guide workspace</span><h2>AI20k Lab Workflow Guide</h2></div><div className="context-chips"><span>{currentStep ? `Step ${currentStep}` : "No workflow"}</span><span>{sourceCount} sources</span><span className="grounded"><i />Grounded</span></div></header><div className="conversation">{messages.length ? messages.map((message) => <article key={message.id} className={`message ${message.role}`}><div className="message-meta"><span className={message.role === "assistant" ? "agent-mark" : "user-mark"}>{message.role === "assistant" ? "AI" : "You"}</span><strong>{message.role === "assistant" ? "Guide Agent" : "You"}</strong></div><div className="message-body"><ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>{message.citations?.length ? <div className="citation-area"><span>Sources</span><div>{message.citations.map((citation) => <button type="button" key={`${citation.sourceId}-${citation.section}`} className="citation-chip" onClick={() => onCitation(citation.sourceId)} title={`${citation.section}: ${citation.excerpt}`}><i>MD</i>{citation.file}<small>{citation.section}</small></button>)}</div></div> : null}</div></article>) : <div className="chat-empty"><span className="brand-orb large"><i /><i /><i /></span><h3>{disabled ? "Add lab materials to begin" : "What do you need to do next?"}</h3><p>{disabled ? "Import a public GitHub repository or upload Markdown files. The guide will extract your workflow automatically." : "Ask about requirements, checkpoints, commands, or the current step."}</p>{disabled ? <button type="button" className="accent-button" onClick={onAdd}>Add materials</button> : null}</div>}{thinking ? <div className="thinking"><span>Checking sources</span><i /><i /><i /></div> : null}{error ? <div className="chat-error" role="alert"><div><strong>Chat request failed</strong><p>{error}</p></div><button type="button" onClick={onDismissError}>Dismiss</button></div> : null}<div ref={endRef} /></div><div className="composer-zone"><div className="quick-prompts">{prompts.map((prompt) => <button type="button" key={prompt} disabled={disabled || thinking} onClick={() => onSend(prompt)}>{prompt}</button>)}</div><form className="composer" onSubmit={submit}><textarea value={value} onChange={(event) => setValue(event.target.value)} placeholder={disabled ? "Add materials before asking the guide…" : "Ask about requirements, next steps, commands, checkpoints..."} disabled={disabled || thinking} rows={2} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} /><div className="composer-tools"><div><button type="button" onClick={onAdd}><PlusIcon size={14} />Material</button><span>{currentStep ? `Current step · ${currentStep}` : "Waiting for workflow"}</span></div><button className="send-button" type="submit" disabled={!value.trim() || disabled || thinking}><SendIcon size={17} /></button></div></form></div></section>;
 }

@@ -6,8 +6,6 @@ MVP Next.js cho ứng dụng tổng hợp tài liệu Markdown của bài lab th
 
 ```bash
 npm install
-npx prisma generate
-npx prisma migrate dev --name init
 npm run dev
 ```
 
@@ -18,7 +16,6 @@ AI_API_KEY=
 AI_BASE_URL=
 AI_SUMMARIZE_MODEL=
 AI_CHAT_MODEL=
-DATABASE_URL="file:./dev.db"
 ```
 
 Tài liệu kỹ thuật đầy đủ nằm ở `README_APP.md`.
