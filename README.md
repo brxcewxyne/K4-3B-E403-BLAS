@@ -30,6 +30,7 @@ Tài liệu kỹ thuật đầy đủ nằm ở `README_APP.md`.
 **SPEC → Prototype → Demo.** Đây không phải cuộc thi code — đây là cuộc thi **tư duy sản phẩm AI**.
 
 
+
 ## 👥 Thành viên nhóm & Phân công vai trò
 
 **Lớp:** 3B · **Phòng:** ____ · **Cụm:** ____ · **Track:** ____
