@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { AppError } from "../shared/api";
 
 export type ModelKind = "chat" | "workflow";
+export type ReasoningEffort = "low" | "medium" | "high";
 
 const PROVIDER_NAME = "opencode-go";
 const DEFAULT_BASE_URL = "https://opencode.ai/zen/go/v1";
@@ -16,6 +17,11 @@ type GenerationOptions = {
 
 function modelEnvironmentName(kind: ModelKind) {
   return kind === "chat" ? "AI_CHAT_MODEL" : "AI_SUMMARIZE_MODEL";
+}
+
+export function getReasoningEffort(): ReasoningEffort {
+  const configured = process.env.AI_REASONING_EFFORT?.toLowerCase();
+  return configured === "low" || configured === "high" || configured === "medium" ? configured : "medium";
 }
 
 function providerConfig(kind: ModelKind) {
@@ -33,6 +39,7 @@ function providerConfig(kind: ModelKind) {
   return {
     apiKey,
     model,
+    reasoningEffort: getReasoningEffort(),
     baseUrl: (process.env.AI_BASE_URL || DEFAULT_BASE_URL).replace(/\/+$/, "")
   };
 }
@@ -106,13 +113,13 @@ export function createAIRequestSessionId(sessionId?: string) {
 }
 
 async function requestResponsesAPI(kind: ModelKind, system: string, user: string, sessionId?: string, options: GenerationOptions = {}) {
-  const { apiKey, model, baseUrl } = providerConfig(kind);
+  const { apiKey, model, reasoningEffort, baseUrl } = providerConfig(kind);
   const stableSessionId = createAIRequestSessionId(sessionId);
   const timeoutMs = options.timeoutMs || REQUEST_TIMEOUT_MS;
   const startedAt = Date.now();
   let response: Response;
 
-  console.info("OpenCode Go request started", { kind, model, timeoutMs, requestLabel: options.requestLabel || kind });
+  console.info("OpenCode Go request started", { kind, model, reasoningEffort, timeoutMs, requestLabel: options.requestLabel || kind });
 
   try {
     response = await fetch(`${baseUrl}/responses`, {
@@ -131,6 +138,7 @@ async function requestResponsesAPI(kind: ModelKind, system: string, user: string
           { role: "system", content: system },
           { role: "user", content: user }
         ],
+        reasoning: { effort: reasoningEffort },
         text: { format: { type: "json_object" } }
       })
     });

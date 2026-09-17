@@ -1,4 +1,4 @@
-import { createAIRequestSessionId, generateJson } from "../ai/client";
+import { createAIRequestSessionId, generateJson, getReasoningEffort } from "../ai/client";
 import { WORKFLOW_SYSTEM_PROMPT } from "../ai/prompts";
 import { chunkSources, excerptFromChunk } from "../sources/chunks";
 import { AppError } from "../shared/api";
@@ -45,6 +45,7 @@ export async function extractWorkflow(sources: SourceDocument[], sessionId?: str
       selectedSources: context.sourceNames,
       chunks: context.chunks,
       characters: context.characters,
+      reasoningEffort: getReasoningEffort(),
       attempt: index + 1,
       timeoutMs: attempt.timeoutMs
     });
