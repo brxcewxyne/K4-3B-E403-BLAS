@@ -20,7 +20,7 @@ function sanitizeCitation(citation: Citation, sources: SourceDocument[]): Citati
   return { sourceId: source.id, file: source.name, section: chunk.section, excerpt };
 }
 
-export async function extractWorkflow(sources: SourceDocument[]): Promise<LabWorkflow> {
+export async function extractWorkflow(sources: SourceDocument[], sessionId?: string): Promise<LabWorkflow> {
   const schema = `{
   "title": "string", "goal": "string", "prerequisites": ["string"],
   "steps": [{
@@ -31,7 +31,7 @@ export async function extractWorkflow(sources: SourceDocument[]): Promise<LabWor
   "checkpoints": [{ "title": "string", "requirements": ["string"], "sources": [Citation] }],
   "conflicts": [{ "description": "string", "sources": [Citation] }]
 }`;
-  const result = await generateJson("workflow", WORKFLOW_SYSTEM_PROMPT, `Return JSON matching this schema:\n${schema}\n\n${sourcePayload(sources)}`);
+  const result = await generateJson("workflow", WORKFLOW_SYSTEM_PROMPT, `Return JSON matching this schema:\n${schema}\n\n${sourcePayload(sources)}`, sessionId);
   const parsed = labWorkflowSchema.safeParse(result);
   if (!parsed.success) {
     console.error(parsed.error.flatten());

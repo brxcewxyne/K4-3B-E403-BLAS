@@ -1,5 +1,6 @@
 import "server-only";
 
+import { randomUUID } from "node:crypto";
 import { AppError } from "../shared/api";
 
 export type ModelKind = "chat" | "workflow";
@@ -84,8 +85,13 @@ function providerError(status: number) {
   return new AppError("AI_PROVIDER_ERROR", "The AI provider did not return a successful response.", 502);
 }
 
-async function requestResponsesAPI(kind: ModelKind, system: string, user: string) {
+function providerSessionId(sessionId?: string) {
+  return sessionId || randomUUID();
+}
+
+async function requestResponsesAPI(kind: ModelKind, system: string, user: string, sessionId?: string) {
   const { apiKey, model, baseUrl } = providerConfig(kind);
+  const stableSessionId = providerSessionId(sessionId);
   let response: Response;
 
   try {
@@ -93,7 +99,9 @@ async function requestResponsesAPI(kind: ModelKind, system: string, user: string
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json"
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        "x-opencode-session": stableSessionId
       },
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       cache: "no-store",
@@ -137,6 +145,44 @@ async function requestResponsesAPI(kind: ModelKind, system: string, user: string
   return text;
 }
 
-export async function generateJson(kind: ModelKind, system: string, user: string) {
-  return parseJson(await requestResponsesAPI(kind, system, user));
+export async function checkConfiguredModelAvailability(sessionId?: string) {
+  const { apiKey, model, baseUrl } = providerConfig("chat");
+  const stableSessionId = providerSessionId(sessionId);
+  let response: Response;
+
+  try {
+    response = await fetch(`${baseUrl}/models`, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        Accept: "application/json",
+        "x-opencode-session": stableSessionId
+      },
+      signal: AbortSignal.timeout(15_000),
+      cache: "no-store"
+    });
+  } catch (error) {
+    const timeout = error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError");
+    console.error("OpenCode Go model availability check failed", { timeout, error: error instanceof Error ? error.message : "Unknown network error" });
+    throw timeout
+      ? new AppError("AI_TIMEOUT", "The AI provider model check timed out.", 504)
+      : new AppError("AI_PROVIDER_UNAVAILABLE", "The AI provider model list could not be reached.", 503);
+  }
+
+  if (!response.ok) {
+    console.error("OpenCode Go model availability check returned an error", {
+      status: response.status,
+      requestId: response.headers.get("x-request-id")
+    });
+    throw providerError(response.status);
+  }
+
+  const payload = await response.json() as { data?: Array<{ id?: unknown }>; models?: Array<{ id?: unknown }> };
+  const models = (payload.data || payload.models || []).flatMap((item) => typeof item.id === "string" ? [item.id] : []);
+  const available = models.includes(model);
+  console.info("OpenCode Go configured model availability", { model, available, modelCount: models.length });
+  return { model, available, modelCount: models.length };
+}
+
+export async function generateJson(kind: ModelKind, system: string, user: string, sessionId?: string) {
+  return parseJson(await requestResponsesAPI(kind, system, user, sessionId));
 }

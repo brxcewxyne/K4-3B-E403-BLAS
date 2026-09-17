@@ -5,7 +5,7 @@ import { AppError } from "../shared/api";
 import { chatAnswerSchema } from "../shared/schemas";
 import type { ChatAnswer, ChatTurn, LabWorkflow, SourceDocument } from "../shared/types";
 
-export async function answerGroundedQuestion(input: { question: string; sources: SourceDocument[]; workflow: LabWorkflow; currentStep?: string; history?: ChatTurn[] }): Promise<ChatAnswer> {
+export async function answerGroundedQuestion(input: { question: string; sources: SourceDocument[]; workflow: LabWorkflow; sessionId?: string; currentStep?: string; history?: ChatTurn[] }): Promise<ChatAnswer> {
   const chunks = rankChunks(chunkSources(input.sources), input.question, 7);
   const context = chunks.map((chunk) => `===== CHUNK sourceId=${chunk.sourceId} file=${chunk.file} section=${chunk.section} =====\n${chunk.content}`).join("\n\n");
   const current = input.workflow.steps.find((step) => step.id === input.currentStep);
@@ -23,7 +23,7 @@ ${context}
 
 Student question:
 ${input.question}`;
-  const result = await generateJson("chat", CHAT_SYSTEM_PROMPT, prompt);
+  const result = await generateJson("chat", CHAT_SYSTEM_PROMPT, prompt, input.sessionId);
   const parsed = chatAnswerSchema.safeParse(result);
   if (!parsed.success) throw new AppError("CHAT_SCHEMA_ERROR", "The AI provider returned an invalid chat response.", 502);
 

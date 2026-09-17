@@ -57,6 +57,9 @@ Page-level scrolling uses Lenis with reduced-motion support. The sources list, c
 - `POST /api/workflow` accepts `{ "sources": SourceDocument[] }`.
 - `POST /api/chat` accepts `{ "sources": SourceDocument[], "workflow": LabWorkflow, "messages": ChatTurn[] }`.
 - `GET /api/health` reports provider configuration without making a model request or exposing secrets.
+- `GET /api/health?check=models` performs an authenticated provider model-list check for debugging without exposing the API key.
+
+The browser keeps a non-identifying UUID in `sessionStorage` and includes it as `sessionId` in workflow and chat requests. The server validates the UUID, creates a fallback when absent, and forwards it to OpenCode Go only as `x-opencode-session`.
 
 All routes return either `{ "ok": true, "data": ... }` or `{ "ok": false, "error": { "code", "message", "details"? } }`.
 

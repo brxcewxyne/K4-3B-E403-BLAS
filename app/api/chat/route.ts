@@ -10,6 +10,7 @@ const requestSchema = z.object({
   question: z.string().trim().min(1).max(4000),
   sources: sourceArraySchema,
   workflow: labWorkflowSchema,
+  sessionId: z.string().uuid().optional(),
   currentStep: z.string().optional(),
   history: z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().max(6000) })).max(10).optional()
 });
