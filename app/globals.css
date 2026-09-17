@@ -378,6 +378,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px
 .workspace-grid { grid-template-columns: minmax(230px, 20%) minmax(520px, 1fr) minmax(300px, 25%); }
 .agent-status { color: var(--muted); font-size: 11px; font-weight: 650; }
 .agent-status::before { display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: #22a06b; content: ""; }
+.agent-status.is-demo::before { background: #d99a24; }
+.demo-badge { padding: 3px 6px; border: 1px solid #e5cf99; border-radius: 4px; background: #fff9ea; color: #795d1f; font-size: 8px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
+.mobile-demo-badge { display: none; margin-left: 4px; padding: 2px 4px; border-radius: 3px; background: #fff4d6; color: #795d1f; font-size: 7px; letter-spacing: .05em; text-transform: uppercase; vertical-align: middle; }
 .source-heading p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .source-summary { display: flex; align-items: center; gap: 7px; margin-top: 12px; color: #52605a; font-size: 10px; font-weight: 700; }
 .source-group + .source-group { margin-top: 6px; }
@@ -427,6 +430,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px
 .workspace-state h1 { margin: 15px 0 6px; font-size: 20px; }
 .workspace-state p { max-width: 460px; margin: 0 auto 18px; color: var(--muted); line-height: 1.55; }
 .workspace-state .primary-button, .workspace-state .text-button { justify-self: center; }
+.state-actions { display: flex; justify-content: center; gap: 8px; }
+.connection-note { margin-top: 13px; color: #87918d; font-size: 10px; }
 .text-button { margin-top: 10px; border: 0; background: transparent; color: var(--accent); font-size: 11px; font-weight: 750; cursor: pointer; }
 .state-icon, .state-spinner { display: grid; width: 42px; height: 42px; margin: auto; place-items: center; border-radius: 50%; }
 .state-icon { background: #fff0f0; color: #a23d43; font-weight: 850; }
@@ -444,6 +449,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px
 }
 
 @media (max-width: 760px) {
+  .mobile-demo-badge { display: inline-block; }
   .topbar-actions .agent-status { display: none; }
   .mobile-tabs { position: sticky; top: 62px; z-index: 19; display: grid; grid-template-columns: repeat(3, 1fr); padding: 5px; border-bottom: 1px solid var(--line); background: white; }
   .mobile-tabs button { padding: 8px; border: 0; border-radius: 5px; background: transparent; color: var(--muted); font-size: 11px; font-weight: 700; }

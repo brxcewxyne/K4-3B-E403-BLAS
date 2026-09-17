@@ -23,10 +23,28 @@ AI_SUMMARIZE_MODEL=
 AI_CHAT_MODEL=
 DATABASE_URL="file:./dev.db"
 NEXT_PUBLIC_API_BASE_URL=
+NEXT_PUBLIC_DEMO_MODE=false
 FRONTEND_ORIGINS=http://localhost:3000
 ```
 
 Nếu dùng OpenAI trực tiếp, có thể để trống `AI_BASE_URL`; app mặc định dùng `https://api.openai.com/v1`.
+
+## Frontend demo mode
+
+Demo mode chạy hoàn toàn trong trình duyệt, không gọi bất kỳ API route hay backend bên ngoài nào. Backend thật và API client vẫn được giữ nguyên.
+
+```env
+NEXT_PUBLIC_DEMO_MODE=true
+```
+
+Chạy local:
+
+```bash
+npm install
+npm run dev
+```
+
+Trong demo mode, sources, chat theo intent, citations, workflow progress và Add materials đều dùng dữ liệu local. GitHub URL và file upload chỉ được mô phỏng; UI luôn ghi rõ không có dữ liệu nào được gửi hoặc index.
 
 ## Cài đặt và chạy
 
@@ -56,6 +74,15 @@ Backend hiện tại trên host Node.js có persistent storage
 
 ### Deploy frontend lên Vercel
 
+Frontend-only demo tạm thời:
+
+1. Import repository vào Vercel và chọn thư mục project này làm Root Directory.
+2. Giữ framework preset `Next.js`; Build Command là `npm run build`.
+3. Thêm `NEXT_PUBLIC_DEMO_MODE=true` cho Production và Preview. Không cần cấu hình `NEXT_PUBLIC_API_BASE_URL`.
+4. Deploy và kiểm tra Sources, demo chat, citation, progress và Add materials. Không request backend nào được gửi trong chế độ này.
+
+Khi kết nối backend production:
+
 1. Import repository vào Vercel và chọn thư mục project này làm Root Directory.
 2. Giữ framework preset `Next.js`; Build Command là `npm run build`. Không cần `vercel.json`.
 3. Thêm `NEXT_PUBLIC_API_BASE_URL=https://<backend-host>` cho Production (và Preview nếu backend cho phép origin đó).
@@ -63,6 +90,8 @@ Backend hiện tại trên host Node.js có persistent storage
 5. Kiểm tra import GitHub, upload ZIP, chat và tải source từ URL production.
 
 Nếu deploy full-stack trên một host Node.js có persistent storage, để trống `NEXT_PUBLIC_API_BASE_URL`; frontend sẽ gọi API cùng origin.
+
+Để deploy frontend-only tạm thời, đặt `NEXT_PUBLIC_DEMO_MODE=true`; khi đó không cần `NEXT_PUBLIC_API_BASE_URL`. Để kết nối lại backend sau này, đặt `NEXT_PUBLIC_DEMO_MODE=false`, cấu hình `NEXT_PUBLIC_API_BASE_URL`, rồi redeploy.
 
 ## Kiểm tra
 
