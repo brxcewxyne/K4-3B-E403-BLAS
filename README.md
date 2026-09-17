@@ -13,9 +13,9 @@ Tạo `.env` từ `.env.example` trước khi chạy:
 
 ```env
 AI_API_KEY=
-AI_BASE_URL=
-AI_SUMMARIZE_MODEL=
-AI_CHAT_MODEL=
+AI_BASE_URL=https://opencode.ai/zen/go/v1
+AI_SUMMARIZE_MODEL=muse-spark-1.3-contributor
+AI_CHAT_MODEL=muse-spark-1.3-contributor
 ```
 
 Tài liệu kỹ thuật đầy đủ nằm ở `README_APP.md`.

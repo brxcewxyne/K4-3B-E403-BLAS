@@ -1,51 +1,142 @@
+import "server-only";
+
 import { AppError } from "../shared/api";
 
-type ModelKind = "chat" | "summarize";
+export type ModelKind = "chat" | "workflow";
 
-function config(kind: ModelKind) {
-  const apiKey = process.env.AI_API_KEY;
-  const model = kind === "chat" ? process.env.AI_CHAT_MODEL : process.env.AI_SUMMARIZE_MODEL;
-  if (!apiKey) throw new AppError("AI_NOT_CONFIGURED", "AI_API_KEY is not configured on the server.", 503);
-  if (!model) throw new AppError("AI_NOT_CONFIGURED", `${kind === "chat" ? "AI_CHAT_MODEL" : "AI_SUMMARIZE_MODEL"} is not configured on the server.`, 503);
-  return { apiKey, model, baseUrl: (process.env.AI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "") };
+const PROVIDER_NAME = "opencode-go";
+const DEFAULT_BASE_URL = "https://opencode.ai/zen/go/v1";
+const REQUEST_TIMEOUT_MS = 55_000;
+
+function modelEnvironmentName(kind: ModelKind) {
+  return kind === "chat" ? "AI_CHAT_MODEL" : "AI_SUMMARIZE_MODEL";
 }
 
-function textFromResponse(value: unknown): string {
-  if (typeof value === "string") return value;
-  if (Array.isArray(value)) return value.map(textFromResponse).join("");
-  if (value && typeof value === "object") {
-    const item = value as Record<string, unknown>;
-    if (typeof item.output_text === "string") return item.output_text;
-    if (typeof item.text === "string") return item.text;
-    if (typeof item.content === "string") return item.content;
-    return Object.values(item).map(textFromResponse).join("");
+function providerConfig(kind: ModelKind) {
+  const apiKey = process.env.AI_API_KEY;
+  const environmentName = modelEnvironmentName(kind);
+  const model = process.env[environmentName];
+
+  if (!apiKey) {
+    throw new AppError("AI_NOT_CONFIGURED", "AI_API_KEY is not configured on the server.", 503);
   }
-  return "";
+  if (!model) {
+    throw new AppError("AI_NOT_CONFIGURED", `${environmentName} is not configured on the server.`, 503);
+  }
+
+  return {
+    apiKey,
+    model,
+    baseUrl: (process.env.AI_BASE_URL || DEFAULT_BASE_URL).replace(/\/+$/, "")
+  };
+}
+
+export function getAIProviderStatus() {
+  return {
+    aiProvider: PROVIDER_NAME,
+    model: process.env.AI_CHAT_MODEL || null,
+    configured: Boolean(process.env.AI_API_KEY && process.env.AI_CHAT_MODEL && process.env.AI_SUMMARIZE_MODEL),
+    endpoint: "responses"
+  } as const;
+}
+
+function responseText(value: unknown): string {
+  if (!value || typeof value !== "object") return "";
+  const response = value as {
+    output_text?: unknown;
+    output?: Array<{ content?: Array<{ text?: unknown; output_text?: unknown }> }>;
+  };
+  if (typeof response.output_text === "string") return response.output_text;
+
+  return (response.output || [])
+    .flatMap((item) => item.content || [])
+    .map((item) => typeof item.text === "string" ? item.text : typeof item.output_text === "string" ? item.output_text : "")
+    .join("");
 }
 
 function parseJson(text: string) {
   const cleaned = text.trim().replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim();
   const start = cleaned.indexOf("{");
   const end = cleaned.lastIndexOf("}");
-  if (start < 0 || end <= start) throw new AppError("AI_MALFORMED_RESPONSE", "The AI provider returned an invalid structured response.", 502);
-  try { return JSON.parse(cleaned.slice(start, end + 1)) as unknown; }
-  catch { throw new AppError("AI_MALFORMED_RESPONSE", "The AI provider returned invalid JSON.", 502); }
+  if (start < 0 || end <= start) {
+    throw new AppError("AI_MALFORMED_RESPONSE", "The AI provider returned an invalid structured response.", 502);
+  }
+  try {
+    return JSON.parse(cleaned.slice(start, end + 1)) as unknown;
+  } catch {
+    throw new AppError("AI_MALFORMED_RESPONSE", "The AI provider returned invalid JSON.", 502);
+  }
+}
+
+function providerError(status: number) {
+  if (status === 401 || status === 403) {
+    return new AppError("AI_AUTH_ERROR", "The AI provider rejected the configured credentials.", 503);
+  }
+  if (status === 429) {
+    return new AppError("AI_RATE_LIMIT", "The AI provider rate limit was reached. Try again shortly.", 429);
+  }
+  if (status === 400 || status === 422) {
+    return new AppError("AI_PROVIDER_REQUEST_ERROR", "The AI provider rejected the generation request.", 502);
+  }
+  if (status >= 500) {
+    return new AppError("AI_PROVIDER_UNAVAILABLE", "The AI provider is temporarily unavailable.", 503);
+  }
+  return new AppError("AI_PROVIDER_ERROR", "The AI provider did not return a successful response.", 502);
+}
+
+async function requestResponsesAPI(kind: ModelKind, system: string, user: string) {
+  const { apiKey, model, baseUrl } = providerConfig(kind);
+  let response: Response;
+
+  try {
+    response = await fetch(`${baseUrl}/responses`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      },
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      cache: "no-store",
+      body: JSON.stringify({
+        model,
+        input: [
+          { role: "system", content: system },
+          { role: "user", content: user }
+        ],
+        text: { format: { type: "json_object" } }
+      })
+    });
+  } catch (error) {
+    const timeout = error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError");
+    console.error("OpenCode Go request failed", { kind, timeout, error: error instanceof Error ? error.message : "Unknown network error" });
+    throw timeout
+      ? new AppError("AI_TIMEOUT", "The AI provider took too long to respond.", 504)
+      : new AppError("AI_PROVIDER_UNAVAILABLE", "The AI provider could not be reached.", 503);
+  }
+
+  if (!response.ok) {
+    let diagnostic: unknown;
+    try { diagnostic = await response.json(); } catch { diagnostic = await response.text().catch(() => "Unreadable response"); }
+    console.error("OpenCode Go returned an error", {
+      kind,
+      status: response.status,
+      requestId: response.headers.get("x-request-id"),
+      diagnostic
+    });
+    throw providerError(response.status);
+  }
+
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    throw new AppError("AI_MALFORMED_RESPONSE", "The AI provider returned an unreadable response.", 502);
+  }
+  const text = responseText(payload);
+  if (!text) throw new AppError("AI_MALFORMED_RESPONSE", "The AI provider returned an empty response.", 502);
+  return text;
 }
 
 export async function generateJson(kind: ModelKind, system: string, user: string) {
-  const { apiKey, model, baseUrl } = config(kind);
-  const headers = { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" };
-  const responses = await fetch(`${baseUrl}/responses`, {
-    method: "POST", headers, signal: AbortSignal.timeout(55_000),
-    body: JSON.stringify({ model, input: [{ role: "system", content: system }, { role: "user", content: user }], text: { format: { type: "json_object" } } })
-  }).catch(() => null);
-  if (responses?.ok) return parseJson(textFromResponse(await responses.json()));
-
-  const chat = await fetch(`${baseUrl}/chat/completions`, {
-    method: "POST", headers, signal: AbortSignal.timeout(55_000),
-    body: JSON.stringify({ model, messages: [{ role: "system", content: system }, { role: "user", content: user }], response_format: { type: "json_object" } })
-  }).catch(() => null);
-  if (!chat?.ok) throw new AppError("AI_PROVIDER_ERROR", "The AI provider did not return a successful response.", 502);
-  const json = await chat.json() as { choices?: Array<{ message?: { content?: string } }> };
-  return parseJson(json.choices?.[0]?.message?.content || "");
+  return parseJson(await requestResponsesAPI(kind, system, user));
 }

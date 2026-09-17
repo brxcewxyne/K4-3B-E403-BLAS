@@ -23,13 +23,13 @@ The application accepts at most 50 files, 1 MB per file, and 2 MB of Markdown in
 
 ```env
 AI_API_KEY=
-AI_BASE_URL=
-AI_SUMMARIZE_MODEL=
-AI_CHAT_MODEL=
+AI_BASE_URL=https://opencode.ai/zen/go/v1
+AI_SUMMARIZE_MODEL=muse-spark-1.3-contributor
+AI_CHAT_MODEL=muse-spark-1.3-contributor
 ```
 
 - `AI_API_KEY` is required and remains server-side.
-- `AI_BASE_URL` is optional and defaults to `https://api.openai.com/v1`.
+- `AI_BASE_URL` is optional and defaults to the OpenCode Go API at `https://opencode.ai/zen/go/v1`.
 - `AI_SUMMARIZE_MODEL` and `AI_CHAT_MODEL` are required model names for workflow generation and chat.
 
 There are no public API keys, database variables, or frontend API-base variables. The browser calls same-origin Next.js route handlers.
@@ -44,16 +44,19 @@ Browser workspace
 
 Next.js route handlers
   -> public GitHub REST/raw endpoints
-  -> configured OpenAI-compatible API
+  -> OpenCode Go Responses API (Muse Spark 1.3 Contributor)
 ```
 
 The app does not clone repositories, execute repository code, write uploaded content to disk, or require a database. Checklist progress and the selected source are stored in the browser's `localStorage`.
+
+Page-level scrolling uses Lenis with reduced-motion support. The sources list, chat conversation, workflow panel, and material modal remain native scroll containers so wheel, touch, sticky, and modal behavior stay reliable.
 
 ## API
 
 - `POST /api/ingest` accepts JSON `{ "repositoryUrl": "..." }` or multipart form data containing `files`.
 - `POST /api/workflow` accepts `{ "sources": SourceDocument[] }`.
 - `POST /api/chat` accepts `{ "sources": SourceDocument[], "workflow": LabWorkflow, "messages": ChatTurn[] }`.
+- `GET /api/health` reports provider configuration without making a model request or exposing secrets.
 
 All routes return either `{ "ok": true, "data": ... }` or `{ "ok": false, "error": { "code", "message", "details"? } }`.
 

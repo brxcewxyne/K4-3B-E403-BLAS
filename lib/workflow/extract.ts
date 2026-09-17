@@ -31,7 +31,7 @@ export async function extractWorkflow(sources: SourceDocument[]): Promise<LabWor
   "checkpoints": [{ "title": "string", "requirements": ["string"], "sources": [Citation] }],
   "conflicts": [{ "description": "string", "sources": [Citation] }]
 }`;
-  const result = await generateJson("summarize", WORKFLOW_SYSTEM_PROMPT, `Return JSON matching this schema:\n${schema}\n\n${sourcePayload(sources)}`);
+  const result = await generateJson("workflow", WORKFLOW_SYSTEM_PROMPT, `Return JSON matching this schema:\n${schema}\n\n${sourcePayload(sources)}`);
   const parsed = labWorkflowSchema.safeParse(result);
   if (!parsed.success) {
     console.error(parsed.error.flatten());

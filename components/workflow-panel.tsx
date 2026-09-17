@@ -1,14 +1,80 @@
+"use client";
+
 import { CheckIcon } from "./icons";
 import type { LabWorkflow } from "@/lib/shared/types";
 
-type Props = { workflow: LabWorkflow | null; completed: string[]; selectedId: string; loading: boolean; error: string; onSelect: (id: string) => void; onComplete: () => void; onRetry: () => void };
+type Props = {
+  workflow: LabWorkflow | null;
+  completed: string[];
+  selectedId: string;
+  loading: boolean;
+  error: string;
+  onSelect: (id: string) => void;
+  onComplete: () => void;
+  onRetry: () => void;
+};
+
+function revealStepDetails() {
+  window.requestAnimationFrame(() => {
+    document.getElementById("workflow-step-detail")?.scrollIntoView({
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+      block: "nearest"
+    });
+  });
+}
 
 export function WorkflowPanel({ workflow, completed, selectedId, loading, error, onSelect, onComplete, onRetry }: Props) {
-  if (loading) return <aside className="glass-panel workflow-panel centered-state"><div className="state-spinner" /><strong>Generating workflow</strong><p>Extracting ordered steps and source references…</p></aside>;
-  if (error) return <aside className="glass-panel workflow-panel centered-state"><strong>Workflow generation failed</strong><p>{error}</p><button type="button" className="accent-button" onClick={onRetry}>Try again</button></aside>;
-  if (!workflow) return <aside className="glass-panel workflow-panel centered-state"><strong>No workflow yet</strong><p>Add materials to generate a grounded lab workflow.</p></aside>;
+  if (loading) {
+    return <aside className="glass-panel workflow-panel centered-state" data-lenis-prevent><div className="state-spinner" /><strong>Generating workflow</strong><p>Extracting ordered steps and source references…</p></aside>;
+  }
+  if (error) {
+    return <aside className="glass-panel workflow-panel centered-state" data-lenis-prevent><strong>Workflow generation failed</strong><p>{error}</p><button type="button" className="accent-button" onClick={onRetry}>Try again</button></aside>;
+  }
+  if (!workflow) {
+    return <aside className="glass-panel workflow-panel centered-state" data-lenis-prevent><strong>No workflow yet</strong><p>Add materials to generate a grounded lab workflow.</p></aside>;
+  }
+
   const current = workflow.steps.find((step) => !completed.includes(step.id));
   const selected = workflow.steps.find((step) => step.id === selectedId) || current || workflow.steps[0];
   const progress = Math.round((completed.length / workflow.steps.length) * 100);
-  return <aside className="glass-panel workflow-panel"><header className="workflow-head"><span className="kicker">Lab progress</span><div className="goal-row"><div><span>Goal</span><strong>{workflow.goal}</strong></div><span>{completed.length} / {workflow.steps.length}</span></div><div className="progress-track"><i style={{ width: `${progress}%` }} /></div></header>{current ? <section className="focus-card"><span>Current focus</span><h2>{current.title}</h2><div><span>Next action</span><p>{current.requiredActions[0] || current.description}</p></div></section> : <section className="focus-card"><span>Complete</span><h2>All workflow steps are done</h2></section>}<div className="workflow-list">{workflow.steps.map((step) => { const done = completed.includes(step.id); const active = current?.id === step.id; return <button type="button" key={step.id} className={`workflow-row ${done ? "done" : ""} ${active ? "active" : ""} ${selected?.id === step.id ? "inspected" : ""}`} onClick={() => onSelect(step.id)}><span className="step-marker">{done ? <CheckIcon size={12} /> : active ? "→" : "○"}</span><span><small>{done ? "Completed" : active ? "Current" : `Step ${step.order}`}</small><strong>{step.order}. {step.title}</strong></span></button>; })}</div>{selected ? <section className="step-detail"><div><span>{selected.id === current?.id ? "Current step" : completed.includes(selected.id) ? "Completed" : "Step details"}</span><i>{String(selected.order).padStart(2, "0")}</i></div><h3>{selected.title}</h3><p>{selected.description}</p><h4>Required actions</h4><ul>{selected.requiredActions.map((action) => <li key={action}>— {action}</li>)}</ul><h4>Success criteria</h4><ul className="criteria">{selected.successCriteria.map((item) => <li key={item}><CheckIcon size={12} />{item}</li>)}</ul>{selected.sources.length ? <div className="step-sources"><span>Sources</span><p>{selected.sources.map((source) => source.file).join(" · ")}</p></div> : null}</section> : null}<button type="button" className="complete-button" onClick={onComplete} disabled={!current}><span>{current ? "Mark step as complete" : "Lab completed"}</span><i>→</i></button></aside>;
+
+  return (
+    <aside className="glass-panel workflow-panel" data-lenis-prevent>
+      <header className="workflow-head">
+        <span className="kicker">Lab progress</span>
+        <div className="goal-row"><div><span>Goal</span><strong>{workflow.goal}</strong></div><span>{completed.length} / {workflow.steps.length}</span></div>
+        <div className="progress-track"><i style={{ width: `${progress}%` }} /></div>
+      </header>
+      {current
+        ? <section className="focus-card"><span>Current focus</span><h2>{current.title}</h2><div><span>Next action</span><p>{current.requiredActions[0] || current.description}</p></div></section>
+        : <section className="focus-card"><span>Complete</span><h2>All workflow steps are done</h2></section>}
+      <div className="workflow-list">
+        {workflow.steps.map((step) => {
+          const done = completed.includes(step.id);
+          const active = current?.id === step.id;
+          return (
+            <button
+              type="button"
+              key={step.id}
+              className={`workflow-row ${done ? "done" : ""} ${active ? "active" : ""} ${selected?.id === step.id ? "inspected" : ""}`}
+              onClick={() => { onSelect(step.id); revealStepDetails(); }}
+            >
+              <span className="step-marker">{done ? <CheckIcon size={12} /> : active ? "→" : "○"}</span>
+              <span><small>{done ? "Completed" : active ? "Current" : `Step ${step.order}`}</small><strong>{step.order}. {step.title}</strong></span>
+            </button>
+          );
+        })}
+      </div>
+      {selected ? (
+        <section className="step-detail" id="workflow-step-detail">
+          <div><span>{selected.id === current?.id ? "Current step" : completed.includes(selected.id) ? "Completed" : "Step details"}</span><i>{String(selected.order).padStart(2, "0")}</i></div>
+          <h3>{selected.title}</h3><p>{selected.description}</p>
+          <h4>Required actions</h4><ul>{selected.requiredActions.map((action) => <li key={action}>— {action}</li>)}</ul>
+          <h4>Success criteria</h4><ul className="criteria">{selected.successCriteria.map((item) => <li key={item}><CheckIcon size={12} />{item}</li>)}</ul>
+          {selected.sources.length ? <div className="step-sources"><span>Sources</span><p>{selected.sources.map((source) => source.file).join(" · ")}</p></div> : null}
+        </section>
+      ) : null}
+      <button type="button" className="complete-button" onClick={onComplete} disabled={!current}><span>{current ? "Mark step as complete" : "Lab completed"}</span><i>→</i></button>
+    </aside>
+  );
 }

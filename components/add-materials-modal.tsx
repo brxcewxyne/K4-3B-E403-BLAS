@@ -4,19 +4,80 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { CloseIcon, UploadIcon } from "./icons";
 
 type Mode = "repository" | "upload" | "paste";
-type Props = { onClose: () => void; onRepository: (url: string) => Promise<void>; onFiles: (files: File[]) => Promise<void>; onPaste: (name: string, content: string) => Promise<void> };
+type Props = {
+  onClose: () => void;
+  onRepository: (url: string) => Promise<void>;
+  onFiles: (files: File[]) => Promise<void>;
+  onPaste: (name: string, content: string) => Promise<void>;
+};
 
 export function AddMaterialsModal({ onClose, onRepository, onFiles, onPaste }: Props) {
   const [mode, setMode] = useState<Mode>("repository");
-  const [url, setUrl] = useState(""); const [files, setFiles] = useState<File[]>([]); const [name, setName] = useState("notes.md"); const [content, setContent] = useState("");
-  const [busy, setBusy] = useState(false); const [error, setError] = useState(""); const closeRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => { closeRef.current?.focus(); const escape = (event: KeyboardEvent) => { if (event.key === "Escape" && !busy) onClose(); }; document.addEventListener("keydown", escape); return () => document.removeEventListener("keydown", escape); }, [busy, onClose]);
-  async function run(action: () => Promise<void>) { setBusy(true); setError(""); try { await action(); } catch (caught) { setError(caught instanceof Error ? caught.message : "The request failed."); setBusy(false); } }
-  return <div className="modal-layer" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }}><section className="material-modal" role="dialog" aria-modal="true" aria-labelledby="material-title"><header><div><span className="kicker">Knowledge sources</span><h2 id="material-title">Add materials</h2><p>Sources are processed securely by this application.</p></div><button ref={closeRef} type="button" className="icon-button" onClick={onClose} disabled={busy}><CloseIcon /></button></header><div className="modal-tabs">{(["repository", "upload", "paste"] as Mode[]).map((tab) => <button key={tab} type="button" className={mode === tab ? "active" : ""} onClick={() => { setMode(tab); setError(""); }}>{tab[0].toUpperCase() + tab.slice(1)}</button>)}</div><div className="modal-body">
-    {mode === "repository" ? <form onSubmit={(event: FormEvent) => { event.preventDefault(); void run(() => onRepository(url)); }}><label htmlFor="repo">Public GitHub repository</label><input id="repo" value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://github.com/owner/lab" autoFocus disabled={busy} /><p className="field-note">Public repositories only · up to 50 Markdown files</p><Actions busy={busy} disabled={!url.trim()} onClose={onClose} label="Import repository" /></form> : null}
-    {mode === "upload" ? <div><label className="drop-area" htmlFor="files"><UploadIcon size={23} /><strong>{files.length ? `${files.length} file${files.length > 1 ? "s" : ""} selected` : "Choose Markdown files"}</strong><span>.md · .mdx · up to 1 MB each</span><input id="files" type="file" accept=".md,.mdx" multiple onChange={(event) => setFiles(Array.from(event.target.files || []))} disabled={busy} /></label><div className="modal-actions"><button type="button" className="ghost-button" onClick={onClose}>Cancel</button><button type="button" className="accent-button" disabled={!files.length || busy} onClick={() => void run(() => onFiles(files))}>{busy ? "Processing…" : "Process files"}</button></div></div> : null}
-    {mode === "paste" ? <form onSubmit={(event) => { event.preventDefault(); void run(() => onPaste(name, content)); }}><label htmlFor="filename">Filename</label><input id="filename" value={name} onChange={(event) => setName(event.target.value)} disabled={busy} /><label htmlFor="content">Markdown content</label><textarea id="content" rows={8} value={content} onChange={(event) => setContent(event.target.value)} placeholder="# Lab guide…" disabled={busy} /><Actions busy={busy} disabled={!content.trim()} onClose={onClose} label="Process material" /></form> : null}
-    {error ? <div className="modal-error" role="alert">{error}</div> : null}</div></section></div>;
+  const [url, setUrl] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
+  const [name, setName] = useState("notes.md");
+  const [content, setContent] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const closeRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    closeRef.current?.focus();
+    const escape = (event: KeyboardEvent) => { if (event.key === "Escape" && !busy) onClose(); };
+    document.addEventListener("keydown", escape);
+    return () => document.removeEventListener("keydown", escape);
+  }, [busy, onClose]);
+
+  async function run(action: () => Promise<void>) {
+    setBusy(true);
+    setError("");
+    try {
+      await action();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "The request failed.");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="modal-layer" data-lenis-prevent onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }}>
+      <section className="material-modal" role="dialog" aria-modal="true" aria-labelledby="material-title">
+        <header>
+          <div><span className="kicker">Knowledge sources</span><h2 id="material-title">Add materials</h2><p>Sources are processed securely by this application.</p></div>
+          <button ref={closeRef} type="button" className="icon-button" onClick={onClose} disabled={busy}><CloseIcon /></button>
+        </header>
+        <div className="modal-tabs">
+          {(["repository", "upload", "paste"] as Mode[]).map((tab) => <button key={tab} type="button" className={mode === tab ? "active" : ""} onClick={() => { setMode(tab); setError(""); }}>{tab[0].toUpperCase() + tab.slice(1)}</button>)}
+        </div>
+        <div className="modal-body">
+          {mode === "repository" ? (
+            <form onSubmit={(event: FormEvent) => { event.preventDefault(); void run(() => onRepository(url)); }}>
+              <label htmlFor="repo">Public GitHub repository</label>
+              <input id="repo" value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://github.com/owner/lab" autoFocus disabled={busy} />
+              <p className="field-note">Public repositories only · up to 50 Markdown files</p>
+              <Actions busy={busy} disabled={!url.trim()} onClose={onClose} label="Import repository" />
+            </form>
+          ) : null}
+          {mode === "upload" ? (
+            <div>
+              <label className="drop-area" htmlFor="files"><UploadIcon size={23} /><strong>{files.length ? `${files.length} file${files.length > 1 ? "s" : ""} selected` : "Choose Markdown files"}</strong><span>.md · .mdx · up to 1 MB each</span><input id="files" type="file" accept=".md,.mdx" multiple onChange={(event) => setFiles(Array.from(event.target.files || []))} disabled={busy} /></label>
+              <div className="modal-actions"><button type="button" className="ghost-button" onClick={onClose}>Cancel</button><button type="button" className="accent-button" disabled={!files.length || busy} onClick={() => void run(() => onFiles(files))}>{busy ? "Processing…" : "Process files"}</button></div>
+            </div>
+          ) : null}
+          {mode === "paste" ? (
+            <form onSubmit={(event: FormEvent) => { event.preventDefault(); void run(() => onPaste(name, content)); }}>
+              <label htmlFor="filename">Filename</label><input id="filename" value={name} onChange={(event) => setName(event.target.value)} disabled={busy} />
+              <label htmlFor="content">Markdown content</label><textarea id="content" rows={8} value={content} onChange={(event) => setContent(event.target.value)} placeholder="# Lab guide…" disabled={busy} />
+              <Actions busy={busy} disabled={!content.trim()} onClose={onClose} label="Process material" />
+            </form>
+          ) : null}
+          {error ? <div className="modal-error" role="alert">{error}</div> : null}
+        </div>
+      </section>
+    </div>
+  );
 }
 
-function Actions({ busy, disabled, onClose, label }: { busy: boolean; disabled: boolean; onClose: () => void; label: string }) { return <div className="modal-actions"><button type="button" className="ghost-button" onClick={onClose}>Cancel</button><button type="submit" className="accent-button" disabled={disabled || busy}>{busy ? "Processing…" : label}</button></div>; }
+function Actions({ busy, disabled, onClose, label }: { busy: boolean; disabled: boolean; onClose: () => void; label: string }) {
+  return <div className="modal-actions"><button type="button" className="ghost-button" onClick={onClose}>Cancel</button><button type="submit" className="accent-button" disabled={disabled || busy}>{busy ? "Processing…" : label}</button></div>;
+}
