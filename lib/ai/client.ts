@@ -9,6 +9,7 @@ export type ReasoningEffort = "low" | "medium" | "high";
 const PROVIDER_NAME = "opencode-go";
 const DEFAULT_BASE_URL = "https://opencode.ai/zen/go/v1";
 const REQUEST_TIMEOUT_MS = 55_000;
+export const DEFAULT_WORKFLOW_TIMEOUT_MS = 50_000;
 
 type GenerationOptions = {
   timeoutMs?: number;
@@ -32,6 +33,13 @@ export function getModelName(kind: ModelKind) {
 
 export function getWorkflowFallbackModel() {
   return process.env.AI_WORKFLOW_FALLBACK_MODEL?.trim() || null;
+}
+
+/** Centralized /api/workflow provider timeout. Defaults to 50s when unset or invalid. */
+export function getWorkflowTimeoutMs() {
+  const configured = Number.parseInt(process.env.AI_WORKFLOW_TIMEOUT_MS || "", 10);
+  if (Number.isFinite(configured) && configured > 0) return configured;
+  return DEFAULT_WORKFLOW_TIMEOUT_MS;
 }
 
 function providerConfig(kind: ModelKind, modelOverride?: string) {

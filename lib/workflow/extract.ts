@@ -1,11 +1,10 @@
-import { createAIRequestSessionId, generateJson, getModelName, getReasoningEffort, getWorkflowFallbackModel } from "../ai/client";
+import { createAIRequestSessionId, generateJson, getModelName, getReasoningEffort, getWorkflowTimeoutMs } from "../ai/client";
 import { WORKFLOW_SYSTEM_PROMPT } from "../ai/prompts";
 import { chunkSources, excerptFromChunk } from "../sources/chunks";
 import { AppError } from "../shared/api";
 import { hashString, logEvent } from "../logging/logger";
 import { labWorkflowSchema } from "../shared/schemas";
 import type { Citation, LabWorkflow, SourceDocument } from "../shared/types";
-import { planWorkflowAttempts } from "./attempts";
 import { prepareWorkflowContext } from "./context";
 import { normalizeWorkflowStep } from "./normalize";
 
@@ -39,7 +38,8 @@ export async function extractWorkflow(sources: SourceDocument[], sessionId?: str
 }`;
   const stableSessionId = createAIRequestSessionId(sessionId);
   const primaryModel = getModelName("workflow");
-  const attempts = planWorkflowAttempts(primaryModel, getWorkflowFallbackModel());
+  // Single attempt per invocation: one provider call (max 50s), then local parse + validation.
+  const timeoutMs = getWorkflowTimeoutMs();
   const generationStartedAt = Date.now();
   const sourceIds = sources.map((source) => source.id);
   const inputCharacters = sources.reduce((sum, source) => sum + source.content.length, 0);
@@ -49,65 +49,51 @@ export async function extractWorkflow(sources: SourceDocument[], sessionId?: str
     data: {
       model: primaryModel || "not-configured",
       reasoningEffort: getReasoningEffort("workflow"),
+      timeoutMs,
       sourceCount: sources.length,
       sourceIds,
       characters: inputCharacters,
-      attemptsPlanned: attempts.length,
       currentStepId: null
     }
   });
-  let result: unknown;
-  let usedModel = primaryModel;
-  let attemptsMade = 0;
 
   const failGeneration = (error: unknown, errorCode: string): never => {
     logEvent({
       eventType: "workflow_generation_failed",
       sessionId: stableSessionId,
       data: {
-        model: usedModel || "not-configured",
+        model: primaryModel || "not-configured",
         errorCode,
         durationMs: Date.now() - generationStartedAt,
         sourceCount: sources.length,
         characters: inputCharacters,
-        attemptsMade
+        attempt: 1
       }
     });
     if (error instanceof AppError && error.code === "AI_TIMEOUT") {
       throw new AppError("AI_TIMEOUT", "Workflow generation took too long. Try again with fewer source files.", 504);
+    }
+    if (errorCode === "WORKFLOW_PARSE_ERROR") {
+      throw new AppError("WORKFLOW_PARSE_ERROR", "The AI provider returned a response that could not be read as a workflow.", 502);
     }
     // Auth, rate-limit, provider and request errors surface truthfully — never disguised as schema errors.
     if (error instanceof AppError) throw error;
     throw new AppError("WORKFLOW_SCHEMA_ERROR", "The AI provider returned a workflow that did not match the required schema.", 502);
   };
 
-  for (let index = 0; index < attempts.length; index += 1) {
-    const attempt = attempts[index];
-    usedModel = attempt.model;
-    attemptsMade = index + 1;
-    const context = prepareWorkflowContext(sources, attempt.mode);
-    try {
-      result = await generateJson(
-        "workflow",
-        WORKFLOW_SYSTEM_PROMPT,
-        `Schema:\n${schema}\n\nRelevant source chunks:\n${context.payload}`,
-        stableSessionId,
-        { timeoutMs: attempt.timeoutMs, requestLabel: `workflow-attempt-${index + 1}`, model: attempt.model }
-      );
-      break;
-    } catch (error) {
-      const errorCode = error instanceof AppError ? error.code : "UNKNOWN";
-      const canRetry = (errorCode === "AI_TIMEOUT" || errorCode === "AI_PROVIDER_UNAVAILABLE") && index < attempts.length - 1;
-      if (canRetry) {
-        logEvent({
-          eventType: "workflow_generation_fallback",
-          sessionId: stableSessionId,
-          data: { fromModel: attempt.model, toModel: attempts[index + 1].model, reason: errorCode, attempt: index + 2 }
-        });
-        continue;
-      }
-      return failGeneration(error, errorCode);
-    }
+  const context = prepareWorkflowContext(sources, "normal");
+  let result: unknown;
+  try {
+    result = await generateJson(
+      "workflow",
+      WORKFLOW_SYSTEM_PROMPT,
+      `Schema:\n${schema}\n\nRelevant source chunks:\n${context.payload}`,
+      stableSessionId,
+      { timeoutMs, requestLabel: "workflow", model: primaryModel }
+    );
+  } catch (error) {
+    const errorCode = error instanceof AppError && error.code === "AI_MALFORMED_RESPONSE" ? "WORKFLOW_PARSE_ERROR" : error instanceof AppError ? error.code : "UNKNOWN";
+    return failGeneration(error, errorCode);
   }
 
   const parsed = labWorkflowSchema.safeParse(result);
@@ -158,9 +144,8 @@ export async function extractWorkflow(sources: SourceDocument[], sessionId?: str
       })),
       checkpointCount: workflow.checkpoints.length,
       conflictCount: workflow.conflicts.length,
-      model: usedModel || "not-configured",
-      attempt: attemptsMade,
-      attemptsMade,
+      model: primaryModel || "not-configured",
+      attempt: 1,
       durationMs: Date.now() - generationStartedAt
     }
   });
