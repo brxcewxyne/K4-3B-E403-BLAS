@@ -48,8 +48,9 @@ describe("local grounded fallback", () => {
     const startedAt = Date.now();
     const workflow = buildLocalFallbackWorkflow([doc("README.md", README, 0)], "owner/lab");
     const durationMs = Date.now() - startedAt;
+    // Source H1 wins over the repo slug for the human-readable title.
     const text = workflow.steps.map((step) => `${step.title} ${step.whatToDo.join(" ")} ${step.howToDoIt.join(" ")} ${step.successCriteria.join(" ")}`).join("\n");
-    expect(workflow.title).toBe("owner/lab");
+    expect(workflow.title).toBe("Lab");
     expect(text).toMatch(/venv|environment/i);
     expect(text).toContain("pip install -r requirements.txt");
     expect(text).toContain("python main.py");

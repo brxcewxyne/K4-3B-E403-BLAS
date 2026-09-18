@@ -8,6 +8,7 @@ import type { Citation, LabWorkflow, SourceDocument } from "../shared/types";
 import { prepareWorkflowContext } from "./context";
 import { mapWorkflowErrorCode } from "./error-codes";
 import { buildLocalFallbackWorkflow } from "./fallback";
+import { resolveWorkflowGoal, resolveWorkflowTitle } from "./goal";
 import { normalizeWorkflowStep } from "./normalize";
 
 export type WorkflowGenerationResult = {
@@ -51,7 +52,6 @@ export async function extractWorkflow(sources: SourceDocument[], sessionId?: str
   // fallback builds a grounded workflow from the ingested Markdown instead.
   const timeoutMs = getWorkflowTimeoutMs();
   const repositoryTitle = sources.map((source) => source.repository).find((repository): repository is string => !!repository)?.replace("https://github.com/", "").trim() || "";
-  const sourceTitle = (sources[0]?.name || "").replace(/\.(md|mdx)$/i, "").trim();
   const generationStartedAt = Date.now();
   const sourceIds = sources.map((source) => source.id);
   const inputCharacters = sources.reduce((sum, source) => sum + source.content.length, 0);
@@ -153,7 +153,7 @@ export async function extractWorkflow(sources: SourceDocument[], sessionId?: str
         sessionId: stableSessionId,
         data: { reason: fallbackReason, sourceCount: sources.length }
       });
-      const fallbackWorkflow = buildLocalFallbackWorkflow(sources, repositoryTitle || sourceTitle || undefined);
+      const fallbackWorkflow = buildLocalFallbackWorkflow(sources, repositoryTitle || undefined);
       if (fallbackWorkflow.steps.length) {
         const fallbackDurationMs = Date.now() - fallbackStartedAt;
         logEvent({
@@ -205,11 +205,12 @@ export async function extractWorkflow(sources: SourceDocument[], sessionId?: str
   const parsed = labWorkflowSchema.safeParse(result);
   if (!parsed.success) return failGeneration(parsed.error, "WORKFLOW_SCHEMA_ERROR");
   const sanitize = (citations: Citation[]) => citations.map((citation) => sanitizeCitation(citation, sources)).filter((citation): citation is Citation => Boolean(citation));
-  // Defensive title: parsed output first, then repository/source-derived names, generic last. Never invents a lab title.
-  const title = parsed.data.title?.trim() || repositoryTitle || sourceTitle || "Lab Workflow";
+  // Defensive title/goal: repository slugs, paths, URLs and filenames are
+  // rejected as semantic content — see lib/workflow/goal.ts.
+  const title = resolveWorkflowTitle({ parsedTitle: parsed.data.title, labTitle: repositoryTitle, sources });
   const workflow: LabWorkflow = {
     title,
-    goal: parsed.data.goal ?? "",
+    goal: resolveWorkflowGoal({ parsedGoal: parsed.data.goal, sources }),
     prerequisites: parsed.data.prerequisites ?? [],
     steps: [...(parsed.data.steps ?? [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).map((step, index) => {
       const normalized = normalizeWorkflowStep(step, index);

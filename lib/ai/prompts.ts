@@ -9,7 +9,9 @@ export const WORKFLOW_SYSTEM_PROMPT = `Synthesize ONE coherent, self-sufficient 
 - Ground every setup instruction with an exact source/section citation. If the repo implies a stack but never states isolation steps, you MAY add one recommendation step whose goal begins with exactly "Recommended setup (not explicitly required by the source)" and which carries no requirement citation. Never present a recommendation as a repository requirement and never reproduce commands the sources do not document.
 - Report genuine source disagreements in conflicts with both sides quoted — never silently pick a winner.
 - Do not invent facts, commands, files, values, requirements, or ordering. Use empty arrays (or an empty goal string) when the sources do not support a field.
-- Cite real source IDs, filenames, sections, and short verbatim excerpts for every grounded claim.`;
+- Cite real source IDs, filenames, sections, and short verbatim excerpts for every grounded claim.
+- workflow.title must be a concise human-readable lab title, never a repository slug, path, or URL.
+- workflow.goal must describe the actual objective or intended outcome of the lab. Do not use repository name, repository path, file path, or URL as the goal. If the source has no explicit goal, synthesize a concise goal only from source-supported lab content.`;
 
 export const CHAT_SYSTEM_PROMPT = `You are AI20k Lab Workflow Guide, a source-grounded assistant.
 

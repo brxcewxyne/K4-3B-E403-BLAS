@@ -1,4 +1,5 @@
 import type { Citation, LabWorkflow, SourceDocument, WorkflowStep } from "../shared/types";
+import { resolveWorkflowGoal, resolveWorkflowTitle } from "./goal";
 import { dedupeKey } from "./normalize";
 
 export const MAX_FALLBACK_STEPS = 24;
@@ -258,7 +259,6 @@ export function buildLocalFallbackWorkflow(sources: SourceDocument[], labTitle?:
   // Same instruction repeated across files becomes one step with all references kept.
   const merged = mergeCandidates(candidates).slice(0, MAX_FALLBACK_STEPS);
 
-  const firstHeading = nonEmpty.flatMap((doc) => doc.headings)[0] || "";
   const steps: WorkflowStep[] = merged.map((candidate, index) => ({
     id: `fb-${index + 1}`,
     order: index + 1,
@@ -274,8 +274,8 @@ export function buildLocalFallbackWorkflow(sources: SourceDocument[], labTitle?:
   }));
 
   return {
-    title: labTitle?.trim() || firstHeading || "Lab Workflow",
-    goal: "",
+    title: resolveWorkflowTitle({ labTitle, sources: nonEmpty }),
+    goal: resolveWorkflowGoal({ sources: nonEmpty }),
     prerequisites: [],
     steps,
     checkpoints: [],
