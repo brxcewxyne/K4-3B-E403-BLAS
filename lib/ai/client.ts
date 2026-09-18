@@ -9,7 +9,7 @@ export type ReasoningEffort = "low" | "medium" | "high";
 const PROVIDER_NAME = "opencode-go";
 const DEFAULT_BASE_URL = "https://opencode.ai/zen/go/v1";
 const REQUEST_TIMEOUT_MS = 55_000;
-export const DEFAULT_WORKFLOW_TIMEOUT_MS = 50_000;
+export const DEFAULT_WORKFLOW_TIMEOUT_MS = 40_000;
 
 type GenerationOptions = {
   timeoutMs?: number;
@@ -173,7 +173,7 @@ async function requestResponsesAPI(kind: ModelKind, system: string, user: string
     }
     if (!aborted) throw new AppError("AI_PROVIDER_UNAVAILABLE", "The AI provider could not be reached.", 503);
     if (kind === "workflow") {
-      throw new AppError("AI_APPLICATION_TIMEOUT", `Workflow generation timed out at the application limit (${Math.round(timeoutMs / 1000)}s). Try again with fewer source files.`, 504);
+      throw new AppError("AI_APPLICATION_TIMEOUT", `Workflow generation timed out at the application limit (${Math.round(timeoutMs / 1000)}s).`, 504);
     }
     throw new AppError("AI_TIMEOUT", "The AI provider took too long to respond.", 504);
   }

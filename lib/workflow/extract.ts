@@ -7,7 +7,14 @@ import { labWorkflowSchema } from "../shared/schemas";
 import type { Citation, LabWorkflow, SourceDocument } from "../shared/types";
 import { prepareWorkflowContext } from "./context";
 import { mapWorkflowErrorCode } from "./error-codes";
+import { buildLocalFallbackWorkflow } from "./fallback";
 import { normalizeWorkflowStep } from "./normalize";
+
+export type WorkflowGenerationResult = {
+  workflow: LabWorkflow;
+  generationMode: "ai" | "fallback";
+  fallbackReason?: "timeout" | "provider_error";
+};
 
 function sanitizeCitation(citation: Citation, sources: SourceDocument[]): Citation | null {
   const source = sources.find((item) => item.id === citation.sourceId) || sources.find((item) => item.name === citation.file || item.path === citation.file);
@@ -20,7 +27,7 @@ function sanitizeCitation(citation: Citation, sources: SourceDocument[]): Citati
   return { sourceId: source.id, file: source.name, section: chunk.section, excerpt };
 }
 
-export async function extractWorkflow(sources: SourceDocument[], sessionId?: string): Promise<LabWorkflow> {
+export async function extractWorkflow(sources: SourceDocument[], sessionId?: string): Promise<WorkflowGenerationResult> {
   const schema = `{
   "title": "string", "goal": "string", "prerequisites": ["string"],
   "steps": [{
@@ -39,8 +46,12 @@ export async function extractWorkflow(sources: SourceDocument[], sessionId?: str
 }`;
   const stableSessionId = createAIRequestSessionId(sessionId);
   const primaryModel = getModelName("workflow");
-  // Single attempt per invocation: one provider call (max 50s), then local parse + validation.
+  // Single AI attempt per invocation: one provider call (max 40s), then local
+  // parse + validation. On timeout/transient failure a deterministic local
+  // fallback builds a grounded workflow from the ingested Markdown instead.
   const timeoutMs = getWorkflowTimeoutMs();
+  const repositoryTitle = sources.map((source) => source.repository).find((repository): repository is string => !!repository)?.replace("https://github.com/", "").trim() || "";
+  const sourceTitle = (sources[0]?.name || "").replace(/\.(md|mdx)$/i, "").trim();
   const generationStartedAt = Date.now();
   const sourceIds = sources.map((source) => source.id);
   const inputCharacters = sources.reduce((sum, source) => sum + source.content.length, 0);
@@ -72,9 +83,12 @@ export async function extractWorkflow(sources: SourceDocument[], sessionId?: str
       }
     });
     if (error instanceof AppError && (error.code === "AI_TIMEOUT" || error.code === "AI_APPLICATION_TIMEOUT")) {
-      // Application aborts keep their precise code/message; legacy timeouts keep the established message.
-      if (error.code === "AI_APPLICATION_TIMEOUT") throw error;
-      throw new AppError("AI_TIMEOUT", "Workflow generation took too long. Try again with fewer source files.", 504);
+      // Reached only when the local fallback also produced nothing: all
+      // sources remain available, so never blame the source set.
+      if (error.code === "AI_APPLICATION_TIMEOUT") {
+        throw new AppError("AI_APPLICATION_TIMEOUT", "Workflow generation could not complete. Sources and Chat are still available.", 504);
+      }
+      throw new AppError("AI_TIMEOUT", "Workflow generation could not complete. Sources and Chat are still available.", 504);
     }
     if (errorCode === "WORKFLOW_PARSE_ERROR") {
       throw new AppError("WORKFLOW_PARSE_ERROR", "The AI provider returned a response that could not be read as a workflow.", 502);
@@ -127,7 +141,52 @@ export async function extractWorkflow(sources: SourceDocument[], sessionId?: str
       { timeoutMs, requestLabel: "workflow", model: primaryModel }
     );
   } catch (error) {
-    return failGeneration(error, mapWorkflowErrorCode(error));
+    const errorCode = mapWorkflowErrorCode(error);
+    // AI-first with deterministic grounded fallback: on timeout or transient
+    // provider failure, build the workflow locally from ingested Markdown and
+    // still return HTTP 200. Only a total failure (AI + fallback) errors out.
+    if (errorCode === "AI_TIMEOUT" || errorCode === "AI_APPLICATION_TIMEOUT" || errorCode === "AI_PROVIDER_UNAVAILABLE") {
+      const fallbackReason = errorCode === "AI_PROVIDER_UNAVAILABLE" ? "provider_error" : "timeout";
+      const fallbackStartedAt = Date.now();
+      logEvent({
+        eventType: "workflow_fallback_started",
+        sessionId: stableSessionId,
+        data: { reason: fallbackReason, sourceCount: sources.length }
+      });
+      const fallbackWorkflow = buildLocalFallbackWorkflow(sources, repositoryTitle || sourceTitle || undefined);
+      if (fallbackWorkflow.steps.length) {
+        const fallbackDurationMs = Date.now() - fallbackStartedAt;
+        logEvent({
+          eventType: "workflow_fallback_completed",
+          sessionId: stableSessionId,
+          data: {
+            generationMode: "fallback",
+            fallbackReason,
+            fallbackDurationMs,
+            stepCount: fallbackWorkflow.steps.length
+          }
+        });
+        logEvent({
+          eventType: "workflow_generation_completed",
+          sessionId: stableSessionId,
+          data: {
+            generationMode: "fallback",
+            fallbackReason,
+            title: fallbackWorkflow.title,
+            stepCount: fallbackWorkflow.steps.length,
+            sourcesAvailable: sources.length,
+            durationMs: Date.now() - generationStartedAt
+          }
+        });
+        logEvent({
+          eventType: "workflow_response_returned",
+          sessionId: stableSessionId,
+          data: { generationMode: "fallback", stepCount: fallbackWorkflow.steps.length, durationMs: Date.now() - generationStartedAt }
+        });
+        return { workflow: fallbackWorkflow, generationMode: "fallback", fallbackReason };
+      }
+    }
+    return failGeneration(error, errorCode);
   }
   logEvent({
     eventType: "workflow_provider_finished",
@@ -147,8 +206,6 @@ export async function extractWorkflow(sources: SourceDocument[], sessionId?: str
   if (!parsed.success) return failGeneration(parsed.error, "WORKFLOW_SCHEMA_ERROR");
   const sanitize = (citations: Citation[]) => citations.map((citation) => sanitizeCitation(citation, sources)).filter((citation): citation is Citation => Boolean(citation));
   // Defensive title: parsed output first, then repository/source-derived names, generic last. Never invents a lab title.
-  const repositoryTitle = sources.map((source) => source.repository).find((repository): repository is string => !!repository)?.replace("https://github.com/", "").trim() || "";
-  const sourceTitle = (sources[0]?.name || "").replace(/\.(md|mdx)$/i, "").trim();
   const title = parsed.data.title?.trim() || repositoryTitle || sourceTitle || "Lab Workflow";
   const workflow: LabWorkflow = {
     title,
@@ -203,6 +260,7 @@ export async function extractWorkflow(sources: SourceDocument[], sessionId?: str
       conflictCount: workflow.conflicts.length,
       model: primaryModel || "not-configured",
       attempt: 1,
+      generationMode: "ai",
       sourcesAvailable: sources.length,
       sourcesRepresentedInContext: contextSummary.selectedSourceIds.length,
       setupEvidenceSources: contextSummary.setupEvidence,
@@ -212,7 +270,7 @@ export async function extractWorkflow(sources: SourceDocument[], sessionId?: str
   logEvent({
     eventType: "workflow_response_returned",
     sessionId: stableSessionId,
-    data: { stepCount: workflow.steps.length, durationMs: Date.now() - generationStartedAt }
+    data: { generationMode: "ai", stepCount: workflow.steps.length, durationMs: Date.now() - generationStartedAt }
   });
-  return workflow;
+  return { workflow, generationMode: "ai" };
 }

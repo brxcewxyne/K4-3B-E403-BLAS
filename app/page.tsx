@@ -73,6 +73,8 @@ export default function Home() {
       setSelectedStepId(saved.currentStepId || "");
       appendSessionEvent("workflow_generation_completed", {
         title: result.workflow.title,
+        generationMode: result.generationMode || "ai",
+        fallbackReason: result.fallbackReason || null,
         stepCount: result.workflow.steps.length,
         steps: result.workflow.steps.map((step) => ({
           id: step.id,
@@ -87,7 +89,11 @@ export default function Home() {
         durationMs: Date.now() - startedAt
       });
       setMessages((current) => current.length ? current : [{ id: "welcome", role: "assistant", content: `I’ve extracted **${result.workflow.steps.length} workflow steps**. Ask what to do next or open the workflow checklist.` }]);
-      notify("Workflow ready");
+      if (result.generationMode === "fallback") {
+        notify("Generated from repository structure because AI generation was unavailable.");
+      } else {
+        notify("Workflow ready");
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Workflow generation failed.";
       appendSessionEvent("workflow_generation_failed", { error: message, durationMs: Date.now() - startedAt });

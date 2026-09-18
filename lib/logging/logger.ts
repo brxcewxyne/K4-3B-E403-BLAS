@@ -14,6 +14,8 @@ export type LogEventType =
   | "workflow_generation_completed"
   | "workflow_generation_failed"
   | "workflow_generation_fallback"
+  | "workflow_fallback_started"
+  | "workflow_fallback_completed"
   | "workflow_step_selected"
   | "workflow_step_set_current"
   | "workflow_step_completed"

@@ -15,6 +15,6 @@ export async function POST(request: Request) {
   try {
     const parsed = requestSchema.safeParse(await request.json());
     if (!parsed.success) throw new AppError("INVALID_WORKFLOW_REQUEST", parsed.error.issues[0]?.message || "Workflow request is invalid.");
-    return success({ workflow: await extractWorkflow(parsed.data.sources, parsed.data.sessionId) });
+    return success(await extractWorkflow(parsed.data.sources, parsed.data.sessionId));
   } catch (error) { return failure(error); }
 }

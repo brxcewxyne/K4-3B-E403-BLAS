@@ -44,7 +44,7 @@ export async function ingestFiles(files: File[], paths?: string[]) {
 }
 
 export async function generateWorkflow(sources: SourceDocument[]) {
-  return data<{ workflow: LabWorkflow }>(await fetch("/api/workflow", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sources, sessionId: providerSessionId() }) }));
+  return data<{ workflow: LabWorkflow; generationMode?: "ai" | "fallback"; fallbackReason?: "timeout" | "provider_error" }>(await fetch("/api/workflow", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sources, sessionId: providerSessionId() }) }));
 }
 
 export async function askLabGuide(input: { question: string; sources: SourceDocument[]; progress?: LabProgress; workflowContext?: ChatWorkflowContext; history?: ChatTurn[]; selectedStepId?: string }) {
