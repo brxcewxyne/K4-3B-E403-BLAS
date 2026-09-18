@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { WORKFLOW_SYSTEM_PROMPT } from "@/lib/ai/prompts";
 import { buildLocalFallbackWorkflow, MAX_FALLBACK_STEPS } from "@/lib/workflow/fallback";
 import type { SourceDocument } from "@/lib/shared/types";
 
@@ -76,9 +77,10 @@ describe("local grounded fallback", () => {
     const paths = new Set(workflow.steps.flatMap((step) => step.sources.map((citation) => citation.sourceId)));
     expect(paths.has("source-0")).toBe(false);
     expect(paths).toEqual(new Set(["source-1", "source-2", "source-3"]));
-    const text = workflow.steps.map((step) => step.title).join(" ");
-    expect(text).toMatch(/install/i);
-    expect(text).toMatch(/trace|score/i);
+    expect(workflow.steps.map((step) => step.title).join(" ")).toMatch(/install/i);
+    const details = workflow.steps.flatMap((step) => [...step.whatToDo, ...step.howToDoIt, ...step.successCriteria]).join(" ");
+    expect(details).toMatch(/trace/i);
+    expect(details).toMatch(/score/i);
   });
 
   it("merges duplicate instructions into one step with both references (TEST 23)", () => {
@@ -114,5 +116,71 @@ describe("local grounded fallback", () => {
 
   it("returns no steps when sources carry no actionable evidence", () => {
     expect(buildLocalFallbackWorkflow([]).steps).toEqual([]);
+  });
+});
+
+describe("step granularity", () => {
+  it("folds keyword bullets into one parent step (fixture A)", () => {
+    const workflow = buildLocalFallbackWorkflow([
+      doc("tools.md", "## Tool testing\n\n- Financial keywords\n- Weather keywords\n- Other keywords", 0)
+    ]);
+    expect(workflow.steps).toHaveLength(1);
+    const details = workflow.steps[0].whatToDo.join(" ");
+    expect(details).toMatch(/financial/i);
+    expect(details).toMatch(/weather/i);
+    expect(details).toMatch(/other keywords/i);
+  });
+
+  it("folds short sequential reads into one review step (fixture B)", () => {
+    const workflow = buildLocalFallbackWorkflow([
+      doc("README.md", "## Read materials\n\n1. Read system prompt\n2. Read tool schema A\n3. Read tool schema B", 0)
+    ]);
+    expect(workflow.steps).toHaveLength(1);
+    const details = workflow.steps[0].whatToDo.join(" ");
+    expect(details).toContain("Read system prompt");
+    expect(details).toContain("Read tool schema A");
+    expect(details).toContain("Read tool schema B");
+  });
+
+  it("merges near-duplicate micro-steps while keeping both citations", () => {
+    const workflow = buildLocalFallbackWorkflow([
+      doc("a.md", "## Test routing A\n\n- Verify the financial keyword routing path works end to end", 0),
+      doc("b.md", "## Test routing B\n\n- Verify the weather keyword routing path works end to end", 1)
+    ]);
+    expect(workflow.steps).toHaveLength(1);
+    expect(workflow.steps[0].sources.map((citation) => citation.sourceId).sort()).toEqual(["source-0", "source-1"]);
+    const details = workflow.steps[0].whatToDo.join(" ");
+    expect(details).toMatch(/financial/i);
+    expect(details).toMatch(/weather/i);
+  });
+
+  it("keeps numbered phases distinct", () => {
+    const workflow = buildLocalFallbackWorkflow([
+      doc("a.md", "## Checkpoint 1\n\n- [ ] Submit the trace file", 0),
+      doc("b.md", "## Checkpoint 2\n\n- [ ] Record the final score", 1)
+    ]);
+    expect(workflow.steps).toHaveLength(2);
+    expect(workflow.steps.map((step) => step.title)).toEqual(["Checkpoint 1", "Checkpoint 2"]);
+  });
+
+  it("keeps distinct setup phases separate", () => {
+    const workflow = buildLocalFallbackWorkflow([
+      doc("a.md", "## Setup A\n\n- Install the backend dependencies now please", 0),
+      doc("b.md", "## Setup B\n\n- Install the frontend dependencies now please", 1)
+    ]);
+    expect(workflow.steps).toHaveLength(2);
+  });
+
+  it("keeps short ordered setup items inside one phase step", () => {
+    const workflow = buildLocalFallbackWorkflow([
+      doc("README.md", "## Setup\n\n1. Create a Python virtual environment\n2. Install dependencies", 0)
+    ]);
+    expect(workflow.steps).toHaveLength(1);
+    expect(workflow.steps[0].title).toBe("Setup");
+  });
+
+  it("instructs the AI model toward concise major stages", () => {
+    expect(WORKFLOW_SYSTEM_PROMPT).toContain("5–10 major steps");
+    expect(WORKFLOW_SYSTEM_PROMPT).toContain("Do not create a separate workflow step for every bullet");
   });
 });
