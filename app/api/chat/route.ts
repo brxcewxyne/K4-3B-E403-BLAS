@@ -17,9 +17,9 @@ const requestSchema = z.object({
   }).optional(),
   workflowContext: z.object({
     goal: z.string().max(3000),
-    currentStep: z.object({ id: z.string(), order: z.number(), title: z.string(), description: z.string(), requiredActions: z.array(z.string()), successCriteria: z.array(z.string()) }).optional(),
-    previousStep: z.object({ id: z.string(), order: z.number(), title: z.string(), description: z.string(), requiredActions: z.array(z.string()), successCriteria: z.array(z.string()) }).optional(),
-    nextStep: z.object({ id: z.string(), order: z.number(), title: z.string(), description: z.string(), requiredActions: z.array(z.string()), successCriteria: z.array(z.string()) }).optional(),
+    currentStep: z.object({ id: z.string(), order: z.number(), title: z.string(), goal: z.string().max(2000), requirements: z.array(z.string()).max(50), whatToDo: z.array(z.string()).max(50), howToDoIt: z.array(z.string()).max(50), expectedOutput: z.array(z.string()).max(50), successCriteria: z.array(z.string()).max(50), warnings: z.array(z.string()).max(50) }).optional(),
+    previousStep: z.object({ id: z.string(), order: z.number(), title: z.string(), goal: z.string().max(2000), requirements: z.array(z.string()).max(50), whatToDo: z.array(z.string()).max(50), howToDoIt: z.array(z.string()).max(50), expectedOutput: z.array(z.string()).max(50), successCriteria: z.array(z.string()).max(50), warnings: z.array(z.string()).max(50) }).optional(),
+    nextStep: z.object({ id: z.string(), order: z.number(), title: z.string(), goal: z.string().max(2000), requirements: z.array(z.string()).max(50), whatToDo: z.array(z.string()).max(50), howToDoIt: z.array(z.string()).max(50), expectedOutput: z.array(z.string()).max(50), successCriteria: z.array(z.string()).max(50), warnings: z.array(z.string()).max(50) }).optional(),
     completedSteps: z.array(z.object({ id: z.string(), order: z.number(), title: z.string() })).max(200)
   }).optional(),
   history: z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().max(6000) })).max(10).optional()

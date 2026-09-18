@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { PlusIcon, SendIcon } from "./icons";
+import { groupCitationsBySource } from "@/lib/sources/group-citations";
 import type { Citation } from "@/lib/shared/types";
 
 export type UiMessage = { id: string; role: "user" | "assistant"; content: string; citations?: Citation[] };
@@ -42,8 +43,13 @@ export function ChatPanel({ messages, thinking, error, disabled, onSend, onCitat
             <div className="message-meta"><span className={message.role === "assistant" ? "agent-mark" : "user-mark"}>{message.role === "assistant" ? "AI" : "You"}</span></div>
             <div className="message-body">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
-              {message.citations?.length ? <div className="citation-area"><span>Sources</span><div>{message.citations.map((citation) => (
-                <button type="button" key={`${citation.sourceId}-${citation.section}-${citation.excerpt}`} className="citation-chip" onClick={() => onCitation(citation)}><i>MD</i><span><strong>{citation.file}</strong><small>{citation.section}</small><em>{citation.excerpt}</em></span></button>
+              {message.citations?.length ? <div className="citation-area"><span>Sources</span><div>{groupCitationsBySource(message.citations).map((group) => (
+                <div key={group.key} className="citation-group">
+                  <button type="button" className="citation-file" onClick={() => onCitation(group.sections[0].citation)} title={`Open ${group.file}`}><i>MD</i><strong>{group.file}</strong></button>
+                  {group.sections.some((entry) => entry.section) ? group.sections.filter((entry) => entry.section).map((entry) => (
+                    <button type="button" key={entry.key} className="citation-section" onClick={() => onCitation(entry.citation)} title={`Open ${group.file} · ${entry.section}`}><i aria-hidden="true">↳</i><span>{entry.section}</span></button>
+                  )) : null}
+                </div>
               ))}</div></div> : null}
             </div>
           </article>

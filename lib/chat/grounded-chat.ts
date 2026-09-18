@@ -20,16 +20,29 @@ function selectChatChunks(sources: SourceDocument[], question: string) {
   });
 }
 
+function stepDetails(step: NonNullable<ChatWorkflowContext["currentStep"]>) {
+  const lines = [`${step.order}. ${step.title} (${step.id})`];
+  if (step.goal) lines.push(`Goal: ${step.goal}`);
+  if (step.requirements.length) lines.push(`Requirements: ${step.requirements.join("; ")}`);
+  if (step.whatToDo.length) lines.push(`What to do: ${step.whatToDo.join("; ")}`);
+  if (step.howToDoIt.length) lines.push(`How to do it: ${step.howToDoIt.join("; ")}`);
+  if (step.expectedOutput.length) lines.push(`Expected output: ${step.expectedOutput.join("; ")}`);
+  if (step.successCriteria.length) lines.push(`Success criteria: ${step.successCriteria.join("; ")}`);
+  if (step.warnings.length) lines.push(`Warnings: ${step.warnings.join("; ")}`);
+  return lines.join("\n");
+}
+
 function progressContext(progress?: LabProgress, workflow?: ChatWorkflowContext) {
   if (!progress || !workflow) return "No generated workflow progress is available. Answer from source chunks only.";
   const label = (step: ChatWorkflowContext["currentStep"]) => step ? `${step.order}. ${step.title} (${step.id})` : "None";
-  return `Student-saved progress (reported state, not independently verified):
-Current: ${label(workflow.currentStep)}
-Current details: ${workflow.currentStep ? `${workflow.currentStep.description}\nRequired actions: ${workflow.currentStep.requiredActions.join("; ")}\nSuccess criteria: ${workflow.currentStep.successCriteria.join("; ")}` : "None"}
+  return `Student-saved progress (reported state, not independently verified). The synthesized workflow below is the primary guide; source chunks are supporting evidence.
+Current step:
+${workflow.currentStep ? stepDetails(workflow.currentStep) : "None"}
 Completed: ${workflow.completedSteps.map((item) => `${item.order}. ${item.title} (${item.id})`).join("; ") || "None"}
 Previous: ${label(workflow.previousStep)}
-Next: ${label(workflow.nextStep)}
-Goal: ${workflow.goal}`;
+Next step:
+${workflow.nextStep ? stepDetails(workflow.nextStep) : "None"}
+Lab goal: ${workflow.goal}`;
 }
 
 export async function answerGroundedQuestion(input: { question: string; sources: SourceDocument[]; workflowContext?: ChatWorkflowContext; progress?: LabProgress; sessionId?: string; history?: ChatTurn[] }): Promise<ChatAnswer> {

@@ -21,11 +21,18 @@ export const workflowStepSchema = z.object({
   id: z.string().min(1),
   order: z.number().int().positive(),
   title: z.string().min(1),
-  description: z.string(),
-  requiredActions: z.array(z.string()),
-  successCriteria: z.array(z.string()),
-  hints: z.array(z.string()),
-  sources: z.array(citationSchema)
+  goal: z.string().default(""),
+  requirements: z.array(z.string()).default([]),
+  whatToDo: z.array(z.string()).default([]),
+  howToDoIt: z.array(z.string()).default([]),
+  expectedOutput: z.array(z.string()).default([]),
+  successCriteria: z.array(z.string()).default([]),
+  warnings: z.array(z.string()).default([]),
+  sources: z.array(citationSchema).default([]),
+  // Legacy pre-synthesis fields — accepted for backward compatibility.
+  description: z.string().optional(),
+  requiredActions: z.array(z.string()).optional(),
+  hints: z.array(z.string()).optional()
 });
 
 export const labWorkflowSchema = z.object({

@@ -59,9 +59,13 @@ export function createChatWorkflowContext(workflow: LabWorkflow, progress: LabPr
     id: step.id,
     order: step.order,
     title: step.title,
-    description: step.description,
-    requiredActions: step.requiredActions,
-    successCriteria: step.successCriteria
+    goal: step.goal || step.description || "",
+    requirements: step.requirements ?? [],
+    whatToDo: step.whatToDo.length ? step.whatToDo : (step.requiredActions ?? []),
+    howToDoIt: step.howToDoIt.length ? step.howToDoIt : (step.hints ?? []),
+    expectedOutput: step.expectedOutput ?? [],
+    successCriteria: step.successCriteria,
+    warnings: step.warnings ?? []
   } : undefined;
   return {
     goal: workflow.goal,

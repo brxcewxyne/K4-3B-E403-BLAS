@@ -21,11 +21,24 @@ export type WorkflowStep = {
   id: string;
   order: number;
   title: string;
-  description: string;
-  requiredActions: string[];
+  /** Why this step exists — synthesized from across the ingested documents. */
+  goal: string;
+  /** Merged prerequisites for this step (deduplicated across files). */
+  requirements: string[];
+  /** Complete actions: the user follows these without reopening source files. */
+  whatToDo: string[];
+  /** Concrete execution detail: exact commands, files, values. */
+  howToDoIt: string[];
+  /** Tangible deliverables this step produces. */
+  expectedOutput: string[];
   successCriteria: string[];
-  hints: string[];
+  /** Pitfalls, gotchas and things that commonly fail. */
+  warnings: string[];
   sources: Citation[];
+  /** Legacy pre-synthesis fields — still accepted and mapped forward. */
+  description?: string;
+  requiredActions?: string[];
+  hints?: string[];
 };
 
 export type LabWorkflow = {
@@ -50,7 +63,7 @@ export type LabProgress = {
   stepHistory: string[];
 };
 
-export type ChatWorkflowStep = Pick<WorkflowStep, "id" | "order" | "title" | "description" | "requiredActions" | "successCriteria">;
+export type ChatWorkflowStep = Pick<WorkflowStep, "id" | "order" | "title" | "goal" | "requirements" | "whatToDo" | "howToDoIt" | "expectedOutput" | "successCriteria" | "warnings">;
 
 export type ChatWorkflowContext = {
   goal: string;

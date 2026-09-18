@@ -1,8 +1,64 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CheckIcon } from "./icons";
-import type { LabProgress, LabWorkflow } from "@/lib/shared/types";
+import { groupCitationsBySource } from "@/lib/sources/group-citations";
+import type { Citation, LabProgress, LabWorkflow } from "@/lib/shared/types";
+
+/** Split a goal paragraph into scannable points without adding or rewording content. */
+function splitGoalPoints(goal: string): string[] {
+  const parts = goal.split(/(?<=[.!?])\s+(?=[A-Z0-9"“(\[])/).map((part) => part.trim()).filter(Boolean);
+  if (parts.length >= 2 && parts.every((part) => part.length > 12)) return parts;
+  return [goal];
+}
+
+function GoalBody({ goal }: { goal: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const [overflowing, setOverflowing] = useState(false);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    setExpanded(false);
+  }, [goal]);
+  useEffect(() => {
+    if (expanded) return;
+    const element = bodyRef.current;
+    if (!element) return;
+    const check = () => setOverflowing(element.scrollHeight - element.clientHeight > 4);
+    check();
+    const timer = window.setTimeout(check, 300);
+    window.addEventListener("resize", check);
+    return () => { window.clearTimeout(timer); window.removeEventListener("resize", check); };
+  }, [goal, expanded]);
+  const points = splitGoalPoints(goal);
+  return (
+    <>
+      <div ref={bodyRef} className={`goal-body ${expanded ? "" : "goal-clamp"}`}>
+        {points.length > 1 ? (
+          <ul className="goal-points">{points.map((point) => <li key={point}>{point}</li>)}</ul>
+        ) : (
+          <p>{goal}</p>
+        )}
+      </div>
+      {overflowing ? (
+        <button type="button" className="show-goal" onClick={() => setExpanded((value) => !value)} aria-expanded={expanded}>
+          {expanded ? "Collapse goal" : "Show full goal"}
+        </button>
+      ) : null}
+    </>
+  );
+}
+
+/** Resolve a synthesized list, falling back to legacy pre-synthesis fields. */
+function stepList(step: LabWorkflow["steps"][number], key: "requirements" | "whatToDo" | "howToDoIt" | "expectedOutput" | "warnings"): string[] {
+  if (step[key].length) return step[key];
+  if (key === "whatToDo") return step.requiredActions ?? [];
+  if (key === "howToDoIt") return step.hints ?? [];
+  return [];
+}
+
+function stepGoal(step: LabWorkflow["steps"][number]): string {
+  return step.goal || step.description || "";
+}
 
 type Props = {
   workflow: LabWorkflow | null;
@@ -14,6 +70,7 @@ type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSelect: (id: string) => void;
+  onOpenCitation: (citation: Citation) => void;
   onSetCurrent: (id: string) => void;
   onComplete: () => void;
   onPrevious: () => void;
@@ -21,8 +78,7 @@ type Props = {
   onRetry: () => void;
 };
 
-export function WorkflowPanel({ workflow, progress, selectedId, loading, error, hasSources, open, onOpenChange, onSelect, onSetCurrent, onComplete, onPrevious, onNext, onRetry }: Props) {
-  const [goalOpen, setGoalOpen] = useState(false);
+export function WorkflowPanel({ workflow, progress, selectedId, loading, error, hasSources, open, onOpenChange, onSelect, onOpenCitation, onSetCurrent, onComplete, onPrevious, onNext, onRetry }: Props) {
   // Escape closes. No focus trap: this is a non-modal layout column, not a dialog.
   useEffect(() => {
     if (!open) return;
@@ -37,6 +93,7 @@ export function WorkflowPanel({ workflow, progress, selectedId, loading, error, 
   const current = workflow ? workflow.steps[currentIndex] || workflow.steps[0] : undefined;
   const selected = workflow ? workflow.steps.find((step) => step.id === selectedId) || current || workflow.steps[0] : undefined;
   const currentDone = current ? progress.completedStepIds.includes(current.id) : false;
+  const groupedSources = selected ? groupCitationsBySource(selected.sources) : [];
 
   function body() {
     if (loading) return <div className="workflow-side-body"><div className="workflow-status"><div className="state-spinner" /><div><span>Workflow</span><strong>Generating checklist…</strong><p>Chat is ready while this runs.</p></div></div></div>;
@@ -47,22 +104,24 @@ export function WorkflowPanel({ workflow, progress, selectedId, loading, error, 
     return (
       <>
         <div className="workflow-side-meta">
-          <button type="button" className="goal-toggle" onClick={() => setGoalOpen((value) => !value)} aria-expanded={goalOpen} aria-label="Toggle goal summary">
-            <span>Goal</span><em>{completed}/{total}</em><i aria-hidden="true">{goalOpen ? "▴" : "▾"}</i>
-          </button>
-          <p className={`goal-text ${goalOpen ? "" : "clamp"}`}>{workflow.goal || workflow.title}</p>
-          <div className="progress-track" role="progressbar" aria-valuenow={completed} aria-valuemin={0} aria-valuemax={total}><i style={{ width: `${pct}%` }} /></div>
+          <section className="goal-card" aria-label="Goal">
+            <span className="kicker">Goal</span>
+            <GoalBody goal={workflow.goal || workflow.title} />
+          </section>
+          <div className="progress-track" role="progressbar" aria-label="Workflow progress" aria-valuenow={completed} aria-valuemin={0} aria-valuemax={total}><i style={{ width: `${pct}%` }} /></div>
+          <p className="progress-count">{completed} of {total} steps complete</p>
         </div>
         {current ? (
           <section className="focus-card" aria-live="polite">
             <span>Current step · {current.order} / {total}</span>
             <h2>Step {current.order} — {current.title}</h2>
+            {stepGoal(current) ? <p className="focus-goal">{stepGoal(current)}</p> : null}
             <div>
               <h4>What to do</h4>
               {currentDone ? <p>Completed — revisiting.</p> : null}
-              <ul>{(current.requiredActions.length ? current.requiredActions.slice(0, 3) : [current.description || "The source defines this step but does not provide detailed execution instructions."]).map((action) => <li key={action}>— {action}</li>)}</ul>
+              <ul>{(stepList(current, "whatToDo").slice(0, 3).length ? stepList(current, "whatToDo").slice(0, 3) : ["Not specified in the lab materials."]).map((action) => <li key={action}>— {action}</li>)}</ul>
               <h4>How to do it</h4>
-              {current.hints.length ? <ol className="howto-list">{current.hints.slice(0, 3).map((hint) => <li key={hint}>{hint}</li>)}</ol> : <p>The source defines this step but does not provide detailed execution instructions.</p>}
+              {stepList(current, "howToDoIt").length ? <ol className="howto-list">{stepList(current, "howToDoIt").slice(0, 3).map((hint) => <li key={hint}>{hint}</li>)}</ol> : <p>The source defines this step but does not provide detailed execution instructions.</p>}
             </div>
           </section>
         ) : null}
@@ -80,7 +139,7 @@ export function WorkflowPanel({ workflow, progress, selectedId, loading, error, 
                 onClick={() => onSelect(step.id)}
               >
                 <span className="step-marker">{done ? <CheckIcon size={14} /> : step.order}</span>
-                <span><small>{active ? "Current" : done ? "Completed" : `Step ${step.order}`}</small><strong>{step.title}</strong><em className="row-summary">{step.requiredActions[0] || step.description}</em></span>
+                <span><small>{active ? "Current" : done ? "Completed" : `Step ${step.order}`}</small><strong>{step.title}</strong><em className="row-summary">{stepList(step, "whatToDo")[0] || stepGoal(step)}</em></span>
               </button>
             );
           })}
@@ -89,14 +148,37 @@ export function WorkflowPanel({ workflow, progress, selectedId, loading, error, 
           <section className="step-detail">
             <div><span>{selected.id === current?.id ? "Current step" : progress.completedStepIds.includes(selected.id) ? "Completed" : "Step details"}</span><i>{String(selected.order).padStart(2, "0")}</i></div>
             <h3>Step {selected.order} — {selected.title}</h3>
-            {selected.description ? <p>{selected.description}</p> : null}
+            {stepGoal(selected) ? <p className="detail-goal">{stepGoal(selected)}</p> : null}
+            <h4>Requirements</h4>
+            {stepList(selected, "requirements").length ? <ul>{stepList(selected, "requirements").map((item) => <li key={item}>— {item}</li>)}</ul> : <p>No prerequisites listed in the lab materials.</p>}
             <h4>What to do</h4>
-            {selected.requiredActions.length ? <ul>{selected.requiredActions.map((action) => <li key={action}>— {action}</li>)}</ul> : <p>The source defines this step but does not provide detailed execution instructions.</p>}
+            {stepList(selected, "whatToDo").length ? <ul>{stepList(selected, "whatToDo").map((action) => <li key={action}>— {action}</li>)}</ul> : <p>Not specified in the lab materials.</p>}
             <h4>How to do it</h4>
-            {selected.hints.length ? <ol className="howto-list">{selected.hints.map((hint) => <li key={hint}>{hint}</li>)}</ol> : <p>The source defines this step but does not provide detailed execution instructions.</p>}
-            <h4>Success criteria</h4>
+            {stepList(selected, "howToDoIt").length ? <ol className="howto-list">{stepList(selected, "howToDoIt").map((hint) => <li key={hint}>{hint}</li>)}</ol> : <p>The source defines this step but does not provide detailed execution instructions.</p>}
+            <h4>Expected output</h4>
+            {stepList(selected, "expectedOutput").length ? <ul>{stepList(selected, "expectedOutput").map((item) => <li key={item}>— {item}</li>)}</ul> : <p>Not specified in the lab materials.</p>}
+            <h4>Done when</h4>
             {selected.successCriteria.length ? <ul className="criteria">{selected.successCriteria.map((item) => <li key={item}><CheckIcon size={14} />{item}</li>)}</ul> : <p>No explicit success criteria in the sources — confirm with the lab materials before moving on.</p>}
-            {selected.sources.length ? <div className="step-sources"><span>Sources</span><ul>{selected.sources.map((source) => <li key={`${source.sourceId}-${source.section}`}>{source.file}{source.section ? ` · ${source.section}` : ""}</li>)}</ul></div> : null}
+            {stepList(selected, "warnings").length ? (
+              <><h4>Watch out</h4><ul className="warnings">{stepList(selected, "warnings").map((item) => <li key={item}>{item}</li>)}</ul></>
+            ) : null}
+            {groupedSources.length ? (
+              <div className="step-sources">
+                <span>{groupedSources.length === 1 ? "Source" : `${groupedSources.length} sources`}</span>
+                <ul className="source-groups">
+                  {groupedSources.map((group) => (
+                    <li key={group.key}>
+                      <button type="button" className="source-file" onClick={() => onOpenCitation(group.sections[0].citation)} title={`Open ${group.file}`}>{group.file}</button>
+                      {group.sections.some((entry) => entry.section) ? (
+                        <ul>{group.sections.filter((entry) => entry.section).map((entry) => (
+                          <li key={entry.key}><button type="button" className="source-section" onClick={() => onOpenCitation(entry.citation)} title={`Open ${group.file} · ${entry.section}`}><i aria-hidden="true">↳</i>{entry.section}</button></li>
+                        ))}</ul>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
             {selected.id !== current?.id ? <button type="button" className="set-current-button" onClick={() => onSetCurrent(selected.id)}>Set as current</button> : null}
           </section>
         ) : null}

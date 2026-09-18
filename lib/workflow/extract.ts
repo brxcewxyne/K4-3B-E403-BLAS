@@ -5,6 +5,7 @@ import { AppError } from "../shared/api";
 import { labWorkflowSchema } from "../shared/schemas";
 import type { Citation, LabWorkflow, SourceDocument } from "../shared/types";
 import { prepareWorkflowContext } from "./context";
+import { normalizeWorkflowStep } from "./normalize";
 
 function sanitizeCitation(citation: Citation, sources: SourceDocument[]): Citation | null {
   const source = sources.find((item) => item.id === citation.sourceId) || sources.find((item) => item.name === citation.file || item.path === citation.file);
@@ -21,8 +22,14 @@ export async function extractWorkflow(sources: SourceDocument[], sessionId?: str
   const schema = `{
   "title": "string", "goal": "string", "prerequisites": ["string"],
   "steps": [{
-    "id": "step-1", "order": 1, "title": "string", "description": "string",
-    "requiredActions": ["string"], "successCriteria": ["string"], "hints": ["string"],
+    "id": "step-1", "order": 1, "title": "string",
+    "goal": "why this step exists (1-2 sentences)",
+    "requirements": ["prerequisite state before starting"],
+    "whatToDo": ["complete concrete action the user takes"],
+    "howToDoIt": ["exact command, file, path, value or click-path"],
+    "expectedOutput": ["tangible deliverable this step produces"],
+    "successCriteria": ["observable check that the step is done"],
+    "warnings": ["pitfall or common failure to avoid"],
     "sources": [{ "sourceId": "provided id", "file": "provided filename", "section": "heading", "excerpt": "verbatim excerpt" }]
   }],
   "checkpoints": [{ "title": "string", "requirements": ["string"], "sources": [Citation] }],
@@ -81,7 +88,7 @@ export async function extractWorkflow(sources: SourceDocument[], sessionId?: str
   const sanitize = (citations: Citation[]) => citations.map((citation) => sanitizeCitation(citation, sources)).filter((citation): citation is Citation => Boolean(citation));
   return {
     ...parsed.data,
-    steps: [...parsed.data.steps].sort((a, b) => a.order - b.order).map((step, index) => ({ ...step, id: step.id || `step-${index + 1}`, order: index + 1, sources: sanitize(step.sources) })),
+    steps: [...parsed.data.steps].sort((a, b) => a.order - b.order).map((step, index) => ({ ...normalizeWorkflowStep(step, index), order: index + 1, sources: sanitize(step.sources) })),
     checkpoints: parsed.data.checkpoints.map((checkpoint) => ({ ...checkpoint, sources: sanitize(checkpoint.sources) })),
     conflicts: parsed.data.conflicts.map((conflict) => ({ ...conflict, sources: sanitize(conflict.sources) }))
   };

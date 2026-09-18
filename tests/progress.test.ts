@@ -12,9 +12,15 @@ const workflow: LabWorkflow = {
     id: `step-${index + 1}`,
     order: index + 1,
     title,
+    goal: `${title} goal`,
+    requirements: [],
+    whatToDo: [`${title} action`],
+    howToDoIt: [],
+    expectedOutput: [`${title} output`],
+    successCriteria: [`${title} done`],
+    warnings: [],
     description: `${title} description`,
     requiredActions: [`${title} action`],
-    successCriteria: [`${title} done`],
     hints: [],
     sources: []
   }))
