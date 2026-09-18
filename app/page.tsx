@@ -104,13 +104,14 @@ export default function Home() {
     }
   }
 
-  async function buildWorkspace(nextSources: SourceDocument[], nextRepository?: string) {
+  async function buildWorkspace(nextSources: SourceDocument[], nextRepository?: string, ingest?: { discovered: number; failed: Array<{ path: string }> }) {
     const repoId = nextRepository ? nextRepository.replace("https://github.com/", "") : "local-files";
     setSessionLogContext({ repoId });
     appendSessionEvent("source_ingest_completed", {
       repository: nextRepository ?? null,
       fileCount: nextSources.length,
-      files: nextSources.map((source) => summarizeSourceMeta(source))
+      files: nextSources.map((source) => summarizeSourceMeta(source)),
+      failedSources: ingest?.failed || []
     });
     setSources(nextSources);
     setRepository(nextRepository);
@@ -123,7 +124,12 @@ export default function Home() {
     setChatError("");
     setModalOpen(false);
     setReaderTarget(null);
-    notify("Sources ready — chat is available");
+    if (ingest && (ingest.discovered > nextSources.length || ingest.failed.length)) {
+      const failedNames = ingest.failed.slice(0, 2).map((entry) => entry.path).join(", ");
+      notify(`${nextSources.length} of ${ingest.discovered} documentation files indexed.${failedNames ? ` Could not read: ${failedNames}` : ""}`);
+    } else {
+      notify("Sources ready — chat is available");
+    }
     void runWorkflow(nextSources, nextRepository);
   }
 
@@ -131,15 +137,13 @@ export default function Home() {
     setSessionLogContext({ repoId: url.replace("https://github.com/", "") });
     appendSessionEvent("source_ingest_started", { inputKind: "repository", repositoryUrl: url });
     const result = await ingestRepository(url);
-    if (result.warnings?.length) notify(`${result.sources.length} files imported, ${result.warnings.length} skipped — ${result.warnings[0]}`);
-    await buildWorkspace(result.sources, result.repository);
+    await buildWorkspace(result.sources, result.repository, { discovered: result.sources.length + result.failedSources.length, failed: result.failedSources });
   }
   async function addFiles(files: File[], paths?: string[]) {
     setSessionLogContext({ repoId: "local-files" });
     appendSessionEvent("source_ingest_started", { inputKind: "files", fileCount: files.length, fileNames: files.map((file) => file.name) });
     const result = await ingestFiles(files, paths);
-    if (result.warnings?.length) notify(`${result.warnings.length} file${result.warnings.length > 1 ? "s" : ""} skipped — ${result.warnings[0]}`);
-    await buildWorkspace(result.sources);
+    await buildWorkspace(result.sources, undefined, { discovered: files.length, failed: result.failedSources || [] });
   }
   async function addPaste(name: string, content: string) { const safeName = /\.(md|mdx|txt)$/i.test(name) ? name : `${name || "notes"}.md`; await addFiles([new File([content], safeName, { type: "text/markdown" })]); }
 

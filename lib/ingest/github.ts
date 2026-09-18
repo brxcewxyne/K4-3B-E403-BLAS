@@ -38,17 +38,32 @@ export type MarkdownDiscovery = {
   complete: boolean;
 };
 
+export const NO_DOCUMENTATION_MESSAGE =
+  "No readable lab documentation was found. Please check that this repository contains .md, .mdx, or .txt files.";
+export const DOCUMENTATION_READ_FAILED_MESSAGE =
+  "Documentation files were found, but none could be read successfully.";
+
+/** Throw unless at least one documentation path was discovered (blocks workflow generation). */
+export function ensureDocumentationDiscovered(files: string[]): void {
+  if (!files.length) {
+    throw new AppError(
+      "NO_DOCUMENTATION_FILES",
+      NO_DOCUMENTATION_MESSAGE
+    );
+  }
+}
+
 /**
- * Pure recursive-tree filter: every `.md`/`.mdx` blob (case-insensitive),
- * full paths preserved so identical basenames in different directories stay
- * distinct. Build/tooling directories are excluded.
+ * Pure recursive-tree filter: every `.md`/`.mdx`/`.txt` documentation blob
+ * (case-insensitive), full paths preserved so identical basenames in
+ * different directories stay distinct. Build/tooling directories excluded.
  */
 export function discoverMarkdownFiles(tree: TreeBlob[]): MarkdownDiscovery {
   const seen = new Set<string>();
   const files: string[] = [];
   for (const item of tree) {
     if (item.type !== "blob") continue;
-    if (!/\.(md|mdx)$/i.test(item.path)) continue;
+    if (!/\.(md|mdx|txt)$/i.test(item.path)) continue;
     if (item.path.split("/").some((segment) => IGNORED_SEGMENTS.has(segment))) continue;
     if ((item.size || 0) > 1_000_000) continue;
     const normalized = item.path.replace(/\\/g, "/").replace(/^\/+/, "");
@@ -59,11 +74,14 @@ export function discoverMarkdownFiles(tree: TreeBlob[]): MarkdownDiscovery {
   return { files, complete: true };
 }
 
+export type FailedSource = { path: string; reason: string };
+
 export type IngestionInventory = {
   repository: string;
   branch: string;
   sources: ReturnType<typeof normalizeSources>;
   warnings: string[];
+  failedSources: FailedSource[];
   ingestionComplete: boolean;
   markdownFilesDiscovered: number;
   markdownFilesIngested: number;
@@ -84,26 +102,29 @@ export async function ingestGitHubRepository(value: string): Promise<IngestionIn
 
   const discovered = discoverMarkdownFiles(tree.tree);
   const files = discovered.files;
-  if (!files.length) throw new AppError("NO_MARKDOWN", "No Markdown or MDX files were found in this repository.");
-  if (files.length > MAX_MARKDOWN_FILES) throw new AppError("TOO_MANY_FILES", `The repository contains ${files.length} Markdown files; the limit is ${MAX_MARKDOWN_FILES}.`);
+  ensureDocumentationDiscovered(files);
+  if (files.length > MAX_MARKDOWN_FILES) throw new AppError("TOO_MANY_FILES", `The repository contains ${files.length} documentation files; the limit is ${MAX_MARKDOWN_FILES}.`);
 
-  // One unreadable file must not abort the whole import: skip it loudly.
+  // One unreadable file must not abort the whole import: record it explicitly.
   const documents: Array<{ path: string; content: string; repository: string }> = [];
-  let failed = 0;
+  const failedSources: Array<{ path: string; reason: string }> = [];
+  const failFile = (path: string, reason: string) => {
+    failedSources.push({ path, reason });
+    warnings.push(`Skipped ${path}: ${reason}.`);
+  };
   for (let index = 0; index < files.length; index += 8) {
     const batch = files.slice(index, index + 8);
     const results = await Promise.all(batch.map(async (path) => {
       try {
         const rawUrl = `https://raw.githubusercontent.com/${parsed.owner}/${parsed.repo}/${encodeURIComponent(branch)}/${path.split("/").map(encodeURIComponent).join("/")}`;
         const response = await fetch(rawUrl, { signal: AbortSignal.timeout(15_000), cache: "no-store" });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        if (!response.ok) throw new Error(`GitHub returned HTTP ${response.status}`);
         const content = await response.text();
         if (!content.trim()) throw new Error("empty content");
         if (Buffer.byteLength(content, "utf8") > 1_000_000) throw new Error("exceeds 1 MB");
         return { ok: true as const, path, content };
-      } catch {
-        failed += 1;
-        warnings.push(`Skipped ${path}: could not be read from GitHub.`);
+      } catch (error) {
+        failFile(path, error instanceof Error ? error.message : "could not be read from GitHub");
         return { ok: false as const, path };
       }
     }));
@@ -111,16 +132,17 @@ export async function ingestGitHubRepository(value: string): Promise<IngestionIn
       if (item.ok) documents.push({ path: item.path, content: item.content, repository: parsed.repositoryUrl });
     }
   }
-  if (!documents.length) throw new AppError("NO_MARKDOWN", "No readable Markdown or MDX files were found in this repository.");
-  const ingestionComplete = !tree.truncated && failed === 0;
+  if (!documents.length) throw new AppError("DOCUMENTATION_READ_FAILED", DOCUMENTATION_READ_FAILED_MESSAGE);
+  const ingestionComplete = !tree.truncated && failedSources.length === 0;
   return {
     repository: parsed.repositoryUrl,
     branch,
     sources: normalizeSources(documents),
     warnings,
+    failedSources,
     ingestionComplete,
     markdownFilesDiscovered: files.length,
     markdownFilesIngested: documents.length,
-    markdownFilesFailed: failed
+    markdownFilesFailed: failedSources.length
   };
 }

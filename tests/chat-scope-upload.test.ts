@@ -108,11 +108,14 @@ describe("manual upload extensions", () => {
     expect(result.rejected).toEqual(["image.png"]);
   });
 
-  it("keeps repository ingestion on .md/.mdx only (TEST G)", () => {
+  it("keeps repository ingestion on .md/.mdx/.txt (TEST G)", () => {
     const sources = normalizeSources([{ path: "guide.mdx", content: "# Guide\nBody text here." }]);
     expect(sources).toHaveLength(1);
     expect(sources[0].type).toBe("mdx");
-    expect(() => normalizeSources([{ path: "notes.txt", content: "Plain text here ok." }])).toThrow();
+    const textSources = normalizeSources([{ path: "notes.txt", content: "Plain text here ok." }]);
+    expect(textSources).toHaveLength(1);
+    expect(textSources[0].type).toBe("markdown");
+    expect(() => normalizeSources([{ path: "main.py", content: "print(1) here ok." }])).toThrow();
   });
 
   it("distinguishes repository vs manual sources without blocking repo files (TEST H)", () => {

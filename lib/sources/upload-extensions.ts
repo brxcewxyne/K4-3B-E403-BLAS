@@ -1,8 +1,8 @@
 /** Extensions for files manually added from outside the repository. */
 export const MANUAL_UPLOAD_EXTENSIONS = ["md", "mdx", "txt"] as const;
 
-/** Extensions discovered inside repository imports (unchanged behavior). */
-export const REPOSITORY_SOURCE_EXTENSIONS = ["md", "mdx"] as const;
+/** Documentation extensions discovered inside repository imports. */
+export const REPOSITORY_SOURCE_EXTENSIONS = ["md", "mdx", "txt"] as const;
 
 export const MANUAL_UPLOAD_ERROR = "Only .md, .mdx, and .txt files are supported for external uploads.";
 

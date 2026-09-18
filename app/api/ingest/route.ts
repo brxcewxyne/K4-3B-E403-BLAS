@@ -4,12 +4,13 @@ import { isVerboseEvalLogs, logEvent } from "@/lib/logging/logger";
 import { summarizeSourceMeta } from "@/lib/logging/redact";
 import { normalizeSources } from "@/lib/sources/normalize";
 import { isSupportedExtension, MANUAL_UPLOAD_ERROR, MANUAL_UPLOAD_EXTENSIONS } from "@/lib/sources/upload-extensions";
+import type { FailedSource } from "@/lib/ingest/github";
 import type { SourceDocument } from "@/lib/shared/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-function logIngestCompleted(input: { repoId: string; repository: string | null; branch: string | null; sources: SourceDocument[]; startedAt: number; discovered?: number; failed?: number; ingestionComplete?: boolean }) {
+function logIngestCompleted(input: { repoId: string; repository: string | null; branch: string | null; sources: SourceDocument[]; startedAt: number; discovered?: number; failed?: number; failedSources?: FailedSource[]; ingestionComplete?: boolean }) {
   logEvent({
     eventType: "source_ingest_completed",
     repoId: input.repoId,
@@ -17,6 +18,10 @@ function logIngestCompleted(input: { repoId: string; repository: string | null; 
       repository: input.repository,
       branch: input.branch,
       fileCount: input.sources.length,
+      documentationFilesDiscovered: input.discovered ?? input.sources.length,
+      documentationFilesRead: input.sources.length,
+      documentationFilesFailed: input.failed ?? 0,
+      failedSourcePaths: (input.failedSources || []).map((entry) => entry.path),
       markdownFilesDiscovered: input.discovered ?? input.sources.length,
       markdownFilesIngested: input.sources.length,
       markdownFilesFailed: input.failed ?? 0,
@@ -38,7 +43,7 @@ export async function POST(request: Request) {
       logEvent({ eventType: "source_ingest_started", data: { inputKind: "repository", repositoryUrl: body.repositoryUrl } });
       const result = await ingestGitHubRepository(body.repositoryUrl);
       const repoId = result.repository.replace("https://github.com/", "");
-      logIngestCompleted({ repoId, repository: result.repository, branch: result.branch, sources: result.sources, startedAt, discovered: result.markdownFilesDiscovered, failed: result.markdownFilesFailed, ingestionComplete: result.ingestionComplete });
+      logIngestCompleted({ repoId, repository: result.repository, branch: result.branch, sources: result.sources, startedAt, discovered: result.markdownFilesDiscovered, failed: result.markdownFilesFailed, failedSources: result.failedSources, ingestionComplete: result.ingestionComplete });
       return success(result);
     }
     if (contentType.includes("multipart/form-data")) {
@@ -58,23 +63,28 @@ export async function POST(request: Request) {
       }
       const uploads = files as File[];
       logEvent({ eventType: "source_ingest_started", data: { inputKind: "files", fileCount: uploads.length, fileNames: uploads.map((file) => file.name) } });
-      // One unreadable file must not abort the whole batch: skip it loudly.
+      // One unreadable file must not abort the whole batch: record it explicitly.
       const raw: Array<{ path: string; content: string }> = [];
       const warnings: string[] = [];
+      const failedSources: FailedSource[] = [];
+      const skipFile = (path: string, reason: string) => {
+        failedSources.push({ path, reason });
+        warnings.push(`Skipped ${path}: ${reason}.`);
+      };
       for (let index = 0; index < uploads.length; index += 1) {
         const file = uploads[index];
         const path = (pathOverride[index] || file.name).replace(/\\/g, "/").replace(/^\.?\//, "");
         if (!isSupportedExtension(path, MANUAL_UPLOAD_EXTENSIONS)) {
-          warnings.push(`Skipped ${path || file.name}: ${MANUAL_UPLOAD_ERROR}`);
+          skipFile(path || file.name, MANUAL_UPLOAD_ERROR);
           continue;
         }
         if (file.size > 1_000_000) {
-          warnings.push(`Skipped ${path}: exceeds the 1 MB limit.`);
+          skipFile(path, "exceeds the 1 MB limit");
           continue;
         }
         const content = await file.text();
         if (!content.trim()) {
-          warnings.push(`Skipped ${path}: file is empty.`);
+          skipFile(path, "file is empty");
           continue;
         }
         raw.push({ path, content });
@@ -83,8 +93,8 @@ export async function POST(request: Request) {
         if (warnings.length) throw new AppError("NO_MARKDOWN", warnings[0]);
         throw new AppError("INVALID_INPUT", "Upload at least one Markdown file.");
       }
-      const result = { repository: null, branch: null, sources: normalizeSources(raw, { extensions: MANUAL_UPLOAD_EXTENSIONS }), warnings, ingestionComplete: warnings.length === 0 };
-      logIngestCompleted({ repoId: "local-files", repository: null, branch: null, sources: result.sources, startedAt, discovered: uploads.length, failed: warnings.length, ingestionComplete: result.ingestionComplete });
+      const result = { repository: null, branch: null, sources: normalizeSources(raw, { extensions: MANUAL_UPLOAD_EXTENSIONS }), warnings, failedSources, ingestionComplete: warnings.length === 0 };
+      logIngestCompleted({ repoId: "local-files", repository: null, branch: null, sources: result.sources, startedAt, discovered: uploads.length, failed: failedSources.length, failedSources, ingestionComplete: result.ingestionComplete });
       return success(result);
     }
     throw new AppError("UNSUPPORTED_CONTENT_TYPE", "Use JSON for GitHub ingestion or multipart form data for uploads.", 415);

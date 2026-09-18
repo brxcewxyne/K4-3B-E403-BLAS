@@ -1,5 +1,7 @@
 import type { ApiResult, ChatAnswer, ChatTurn, ChatWorkflowContext, LabProgress, LabWorkflow, SourceDocument } from "../shared/types";
 
+export type FailedSourceInfo = { path: string; reason: string };
+
 const SESSION_STORAGE_KEY = "ai20k-opencode-session";
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 let inMemorySessionId = "";
@@ -33,14 +35,14 @@ async function data<T>(response: Response): Promise<T> {
 }
 
 export async function ingestRepository(repositoryUrl: string) {
-  return data<{ repository: string; branch: string; sources: SourceDocument[]; warnings: string[]; ingestionComplete: boolean }>(await fetch("/api/ingest", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ repositoryUrl }) }));
+  return data<{ repository: string; branch: string; sources: SourceDocument[]; warnings: string[]; failedSources: FailedSourceInfo[]; ingestionComplete: boolean }>(await fetch("/api/ingest", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ repositoryUrl }) }));
 }
 
 export async function ingestFiles(files: File[], paths?: string[]) {
   const form = new FormData();
   files.forEach((file) => form.append("files", file));
   if (paths?.length) form.append("paths", JSON.stringify(paths));
-  return data<{ repository: null; branch: null; sources: SourceDocument[]; warnings?: string[]; ingestionComplete?: boolean }>(await fetch("/api/ingest", { method: "POST", body: form }));
+  return data<{ repository: null; branch: null; sources: SourceDocument[]; warnings?: string[]; failedSources?: FailedSourceInfo[]; ingestionComplete?: boolean }>(await fetch("/api/ingest", { method: "POST", body: form }));
 }
 
 export async function generateWorkflow(sources: SourceDocument[]) {
