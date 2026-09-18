@@ -1,4 +1,5 @@
 import { chunkSources, type SourceChunk } from "../sources/chunks";
+import { hashString } from "../logging/redact";
 import type { SourceDocument } from "../shared/types";
 
 export const WORKFLOW_CONTEXT_CHAR_BUDGET = 56_000;
@@ -123,9 +124,18 @@ export function prepareWorkflowContext(sources: SourceDocument[], mode: ContextM
     .filter(({ source }) => setupScore(source) > 0)
     .map(({ source }) => ({ sourceId: source.id, path: source.path }));
   const documentScores = new Map(selectedDocuments.map(({ source, score }) => [source.id, score]));
+  // Chunk-level dedupe: identical (sourceId + normalized section + content hash)
+  // chunks are sent once. Files themselves are never removed from inventory.
+  const seenChunks = new Set<string>();
   const chunks = chunkSources(selectedDocuments.map(({ source }) => source))
     .map((chunk, index) => ({ chunk, index, score: (documentScores.get(chunk.sourceId) || 0) * 100 + relevance(chunk.section) * 10 }))
     .sort((a, b) => b.score - a.score || a.index - b.index)
+    .filter(({ chunk }) => {
+      const key = `${chunk.sourceId}::${chunk.section.trim().toLowerCase()}::${hashString(chunk.content)}`;
+      if (seenChunks.has(key)) return false;
+      seenChunks.add(key);
+      return true;
+    })
     .slice(0, chunkLimit);
 
   const blocks: string[] = [];

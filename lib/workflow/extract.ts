@@ -6,6 +6,7 @@ import { hashString, logEvent } from "../logging/logger";
 import { labWorkflowSchema } from "../shared/schemas";
 import type { Citation, LabWorkflow, SourceDocument } from "../shared/types";
 import { prepareWorkflowContext } from "./context";
+import { mapWorkflowErrorCode } from "./error-codes";
 import { normalizeWorkflowStep } from "./normalize";
 
 function sanitizeCitation(citation: Citation, sources: SourceDocument[]): Citation | null {
@@ -87,7 +88,29 @@ export async function extractWorkflow(sources: SourceDocument[], sessionId?: str
     selectedSourceIds: context.selectedSourceIds,
     setupEvidence: context.setupEvidence
   };
+  logEvent({
+    eventType: "workflow_context_ready",
+    sessionId: stableSessionId,
+    data: {
+      sourcesAvailable: sources.length,
+      sourcesRepresentedInContext: contextSummary.selectedSourceIds.length,
+      characters: context.characters,
+      chunks: context.chunks,
+      durationMs: Date.now() - generationStartedAt
+    }
+  });
   let result: unknown;
+  const providerStartedAt = Date.now();
+  logEvent({
+    eventType: "workflow_provider_started",
+    sessionId: stableSessionId,
+    data: {
+      model: primaryModel || "not-configured",
+      reasoningEffort: getReasoningEffort("workflow"),
+      timeoutMs,
+      durationMs: providerStartedAt - generationStartedAt
+    }
+  });
   try {
     result = await generateJson(
       "workflow",
@@ -97,9 +120,21 @@ export async function extractWorkflow(sources: SourceDocument[], sessionId?: str
       { timeoutMs, requestLabel: "workflow", model: primaryModel }
     );
   } catch (error) {
-    const errorCode = error instanceof AppError && error.code === "AI_MALFORMED_RESPONSE" ? "WORKFLOW_PARSE_ERROR" : error instanceof AppError ? error.code : "UNKNOWN";
-    return failGeneration(error, errorCode);
+    return failGeneration(error, mapWorkflowErrorCode(error));
   }
+  logEvent({
+    eventType: "workflow_provider_finished",
+    sessionId: stableSessionId,
+    data: {
+      model: primaryModel || "not-configured",
+      durationMs: Date.now() - providerStartedAt
+    }
+  });
+  logEvent({
+    eventType: "workflow_json_parsed",
+    sessionId: stableSessionId,
+    data: { localExtraction: true, durationMs: Date.now() - generationStartedAt }
+  });
 
   const parsed = labWorkflowSchema.safeParse(result);
   if (!parsed.success) return failGeneration(parsed.error, "WORKFLOW_SCHEMA_ERROR");
@@ -126,6 +161,16 @@ export async function extractWorkflow(sources: SourceDocument[], sessionId?: str
       sources: sanitize(conflict.sources ?? [])
     }))
   };
+  logEvent({
+    eventType: "workflow_schema_validated",
+    sessionId: stableSessionId,
+    data: {
+      stepCount: workflow.steps.length,
+      checkpointCount: workflow.checkpoints.length,
+      conflictCount: workflow.conflicts.length,
+      durationMs: Date.now() - generationStartedAt
+    }
+  });
   logEvent({
     eventType: "workflow_generation_completed",
     sessionId: stableSessionId,
@@ -156,6 +201,11 @@ export async function extractWorkflow(sources: SourceDocument[], sessionId?: str
       setupEvidenceSources: contextSummary.setupEvidence,
       durationMs: Date.now() - generationStartedAt
     }
+  });
+  logEvent({
+    eventType: "workflow_response_returned",
+    sessionId: stableSessionId,
+    data: { stepCount: workflow.steps.length, durationMs: Date.now() - generationStartedAt }
   });
   return workflow;
 }

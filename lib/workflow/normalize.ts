@@ -43,32 +43,57 @@ function asCitations(value: unknown): Citation[] {
   );
 }
 
+/** Comparison key: lowercase, punctuation-insensitive, whitespace-collapsed. */
+export function dedupeKey(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+/** Remove intra-list duplicates, keeping the first occurrence. Exported for tests. */
+export function uniqueStrings(items: string[]): string[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = dedupeKey(item);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function withoutOverlap(items: string[], reference: string[]): string[] {
+  const referenceKeys = new Set(reference.map(dedupeKey));
+  return items.filter((item) => !referenceKeys.has(dedupeKey(item)));
+}
+
 /**
  * Map a loosely-typed parsed step onto the strict synthesis-first shape.
  * New fields win; legacy pre-synthesis fields (`description`,
  * `requiredActions`, `hints`) fill gaps so older payloads still render
- * complete instructions. Never invents content: unsupported fields stay
- * empty and the UI states that explicitly.
+ * complete instructions. Then cross-field duplicates are removed so each
+ * field keeps a distinct meaning (title≠goal, whatToDo≠howToDoIt,
+ * expectedOutput≠successCriteria). Never invents content: unsupported
+ * fields stay empty and the UI hides them.
  */
 export function normalizeWorkflowStep(step: LooseWorkflowStep, index: number): WorkflowStep {
-  const whatToDo = asStrings(step.whatToDo);
-  const howToDoIt = asStrings(step.howToDoIt);
-  const legacyActions = asStrings(step.requiredActions);
-  const legacyHints = asStrings(step.hints);
+  const title = asText(step.title) || `Step ${index + 1}`;
+  const whatToDo = uniqueStrings(asStrings(step.whatToDo).length ? asStrings(step.whatToDo) : asStrings(step.requiredActions));
+  const howToDoIt = withoutOverlap(uniqueStrings(asStrings(step.howToDoIt).length ? asStrings(step.howToDoIt) : asStrings(step.hints)), whatToDo);
+  const expectedOutput = uniqueStrings(asStrings(step.expectedOutput));
+  const successCriteria = withoutOverlap(uniqueStrings(asStrings(step.successCriteria)), expectedOutput);
+  const goal = asText(step.goal) || asText(step.description);
   return {
     id: asText(step.id) || `step-${index + 1}`,
     order: typeof step.order === "number" && Number.isInteger(step.order) && step.order > 0 ? step.order : index + 1,
-    title: asText(step.title) || `Step ${index + 1}`,
-    goal: asText(step.goal) || asText(step.description),
-    requirements: asStrings(step.requirements),
-    whatToDo: whatToDo.length ? whatToDo : legacyActions,
-    howToDoIt: howToDoIt.length ? howToDoIt : legacyHints,
-    expectedOutput: asStrings(step.expectedOutput),
-    successCriteria: asStrings(step.successCriteria),
-    warnings: asStrings(step.warnings),
+    title,
+    goal: goal && dedupeKey(goal) !== dedupeKey(title) ? goal : "",
+    requirements: uniqueStrings(asStrings(step.requirements)),
+    whatToDo,
+    howToDoIt,
+    expectedOutput,
+    successCriteria,
+    warnings: uniqueStrings(asStrings(step.warnings)),
     sources: asCitations(step.sources),
     ...(asText(step.description) ? { description: asText(step.description) } : {}),
-    ...(legacyActions.length && !whatToDo.length ? { requiredActions: legacyActions } : {}),
-    ...(legacyHints.length && !howToDoIt.length ? { hints: legacyHints } : {})
+    ...(whatToDo.length && !asStrings(step.whatToDo).length && asStrings(step.requiredActions).length ? { requiredActions: asStrings(step.requiredActions) } : {}),
+    ...(howToDoIt.length && !asStrings(step.howToDoIt).length && asStrings(step.hints).length ? { hints: asStrings(step.hints) } : {})
   };
 }

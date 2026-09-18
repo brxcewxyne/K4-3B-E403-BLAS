@@ -245,7 +245,6 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visib
 .workflow-row strong { overflow: hidden; color: rgba(255, 255, 255, .84); font-size: 17px; font-weight: 550; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; text-shadow: 0 1px 8px rgba(0, 0, 0, .32); }
 .workflow-row.done strong { color: rgba(255, 255, 255, .7); }
 .workflow-row.active strong { color: #F5F5F5; }
-.row-summary { display: block; overflow: hidden; color: rgba(255, 255, 255, .62); font-size: 13px; font-style: normal; line-height: 1.45; text-overflow: ellipsis; white-space: nowrap; }
 .step-detail { flex: 0 0 auto; margin: 3px 12px 12px; padding: 16px; border: 1px solid rgba(255, 255, 255, .055); border-radius: 14px; background: rgba(255, 255, 255, .012); }
 .step-detail > div:first-child { display: flex; justify-content: space-between; gap: 8px; color: var(--peach); font-size: 12px; text-transform: uppercase; }
 .step-detail > div:first-child i { color: #6c6e75; font-size: 18px; font-style: normal; }

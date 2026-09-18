@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { CheckIcon } from "./icons";
 import { groupCitationsBySource } from "@/lib/sources/group-citations";
+import { canMarkComplete, detailHeaderKind, rowLabelText } from "@/lib/workflow/step-view";
 import type { Citation, LabProgress, LabWorkflow } from "@/lib/shared/types";
 
 /** Split a goal paragraph into scannable points without adding or rewording content. */
@@ -114,18 +115,11 @@ export function WorkflowPanel({ workflow, progress, selectedId, loading, error, 
           <div className="progress-track" role="progressbar" aria-label="Workflow progress" aria-valuenow={completed} aria-valuemin={0} aria-valuemax={total}><i style={{ width: `${pct}%` }} /></div>
           <p className="progress-count">{completed} of {total} steps complete</p>
         </div>
-        {current ? (
+        {current && viewingOtherStep ? (
           <section className="focus-card" aria-live="polite">
             <span>Current step · {current.order} / {total}</span>
             <h2>Step {current.order} — {current.title}</h2>
             {stepGoal(current) ? <p className="focus-goal">{stepGoal(current)}</p> : null}
-            <div>
-              <h4>What to do</h4>
-              {currentDone ? <p>Completed — revisiting.</p> : null}
-              <ul>{(stepList(current, "whatToDo").slice(0, 3).length ? stepList(current, "whatToDo").slice(0, 3) : ["Not specified in the lab materials."]).map((action) => <li key={action}>— {action}</li>)}</ul>
-              <h4>How to do it</h4>
-              {stepList(current, "howToDoIt").length ? <ol className="howto-list">{stepList(current, "howToDoIt").slice(0, 3).map((hint) => <li key={hint}>{hint}</li>)}</ol> : <p>The source defines this step but does not provide detailed execution instructions.</p>}
-            </div>
           </section>
         ) : null}
         <div className="workflow-list" role="listbox" aria-label="Workflow steps">
@@ -142,26 +136,21 @@ export function WorkflowPanel({ workflow, progress, selectedId, loading, error, 
                 onClick={() => onSelect(step.id)}
               >
                 <span className="step-marker">{done ? <CheckIcon size={14} /> : step.order}</span>
-                <span><small>{active ? "Current" : selected?.id === step.id ? "Selected" : done ? "Completed" : `Step ${step.order}`}</small><strong>{step.title}</strong><em className="row-summary">{stepList(step, "whatToDo")[0] || stepGoal(step)}</em></span>
+                <span><small>{rowLabelText({ isCurrent: active, isSelected: selected?.id === step.id, isDone: done, order: step.order })}</small><strong>{step.title}</strong></span>
               </button>
             );
           })}
         </div>
         {selected ? (
           <section className="step-detail">
-            <div><span>Step details · {isCurrentStep ? "Current step" : `Viewing step ${selected.order}`}</span><i>{String(selected.order).padStart(2, "0")}</i></div>
+            <div><span>Step details · {detailHeaderKind(isCurrentStep, selected.order)}</span><i>{String(selected.order).padStart(2, "0")}</i></div>
             <h3>Step {selected.order} — {selected.title}</h3>
             {stepGoal(selected) ? <p className="detail-goal">{stepGoal(selected)}</p> : null}
-            <h4>Requirements</h4>
-            {stepList(selected, "requirements").length ? <ul>{stepList(selected, "requirements").map((item) => <li key={item}>— {item}</li>)}</ul> : <p>No prerequisites listed in the lab materials.</p>}
-            <h4>What to do</h4>
-            {stepList(selected, "whatToDo").length ? <ul>{stepList(selected, "whatToDo").map((action) => <li key={action}>— {action}</li>)}</ul> : <p>Not specified in the lab materials.</p>}
-            <h4>How to do it</h4>
-            {stepList(selected, "howToDoIt").length ? <ol className="howto-list">{stepList(selected, "howToDoIt").map((hint) => <li key={hint}>{hint}</li>)}</ol> : <p>The source defines this step but does not provide detailed execution instructions.</p>}
-            <h4>Expected output</h4>
-            {stepList(selected, "expectedOutput").length ? <ul>{stepList(selected, "expectedOutput").map((item) => <li key={item}>— {item}</li>)}</ul> : <p>Not specified in the lab materials.</p>}
-            <h4>Done when</h4>
-            {selected.successCriteria.length ? <ul className="criteria">{selected.successCriteria.map((item) => <li key={item}><CheckIcon size={14} />{item}</li>)}</ul> : <p>No explicit success criteria in the sources — confirm with the lab materials before moving on.</p>}
+            {stepList(selected, "requirements").length ? (<><h4>Requirements</h4><ul>{stepList(selected, "requirements").map((item) => <li key={item}>— {item}</li>)}</ul></>) : null}
+            {stepList(selected, "whatToDo").length ? (<><h4>What to do</h4><ul>{stepList(selected, "whatToDo").map((action) => <li key={action}>— {action}</li>)}</ul></>) : null}
+            {stepList(selected, "howToDoIt").length ? (<><h4>How to do it</h4><ol className="howto-list">{stepList(selected, "howToDoIt").map((hint) => <li key={hint}>{hint}</li>)}</ol></>) : null}
+            {stepList(selected, "expectedOutput").length ? (<><h4>Expected output</h4><ul>{stepList(selected, "expectedOutput").map((item) => <li key={item}>— {item}</li>)}</ul></>) : null}
+            {selected.successCriteria.length ? (<><h4>Done when</h4><ul className="criteria">{selected.successCriteria.map((item) => <li key={item}><CheckIcon size={14} />{item}</li>)}</ul></>) : null}
             {stepList(selected, "warnings").length ? (
               <><h4>Watch out</h4><ul className="warnings">{stepList(selected, "warnings").map((item) => <li key={item}>{item}</li>)}</ul></>
             ) : null}
@@ -205,7 +194,7 @@ export function WorkflowPanel({ workflow, progress, selectedId, loading, error, 
         ) : null}
         <div className="workflow-navigation workflow-side-nav">
           <button type="button" onClick={onPrevious} disabled={selectedIndex <= 0}>Previous</button>
-          <button type="button" className="mark-complete" onClick={onComplete} disabled={!current || currentDone || viewingOtherStep}>{currentDone && !viewingOtherStep ? "Completed" : "Mark complete"}</button>
+          <button type="button" className="mark-complete" onClick={onComplete} disabled={!canMarkComplete(isCurrentStep, currentDone, Boolean(current))}>{currentDone && isCurrentStep ? "Completed" : "Mark complete"}</button>
           <button type="button" onClick={onNext} disabled={selectedIndex < 0 || selectedIndex >= workflow.steps.length - 1}>Next</button>
           {viewingOtherStep ? <p className="mark-complete-hint">Set this step as current before marking it complete.</p> : null}
         </div>
