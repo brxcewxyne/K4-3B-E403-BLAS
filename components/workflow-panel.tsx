@@ -90,9 +90,12 @@ export function WorkflowPanel({ workflow, progress, selectedId, loading, error, 
   const total = workflow?.steps.length || 0;
   const completed = progress.completedStepIds.length;
   const currentIndex = workflow ? workflow.steps.findIndex((step) => step.id === progress.currentStepId) : -1;
+  const selectedIndex = workflow && selected ? workflow.steps.findIndex((step) => step.id === selected.id) : -1;
   const current = workflow ? workflow.steps[currentIndex] || workflow.steps[0] : undefined;
   const selected = workflow ? workflow.steps.find((step) => step.id === selectedId) || current || workflow.steps[0] : undefined;
   const currentDone = current ? progress.completedStepIds.includes(current.id) : false;
+  const isCurrentStep = Boolean(current && selected && selected.id === current.id);
+  const viewingOtherStep = Boolean(current && selected && selected.id !== current.id);
   const groupedSources = selected ? groupCitationsBySource(selected.sources) : [];
 
   function body() {
@@ -139,14 +142,14 @@ export function WorkflowPanel({ workflow, progress, selectedId, loading, error, 
                 onClick={() => onSelect(step.id)}
               >
                 <span className="step-marker">{done ? <CheckIcon size={14} /> : step.order}</span>
-                <span><small>{active ? "Current" : done ? "Completed" : `Step ${step.order}`}</small><strong>{step.title}</strong><em className="row-summary">{stepList(step, "whatToDo")[0] || stepGoal(step)}</em></span>
+                <span><small>{active ? "Current" : selected?.id === step.id ? "Selected" : done ? "Completed" : `Step ${step.order}`}</small><strong>{step.title}</strong><em className="row-summary">{stepList(step, "whatToDo")[0] || stepGoal(step)}</em></span>
               </button>
             );
           })}
         </div>
         {selected ? (
           <section className="step-detail">
-            <div><span>{selected.id === current?.id ? "Current step" : progress.completedStepIds.includes(selected.id) ? "Completed" : "Step details"}</span><i>{String(selected.order).padStart(2, "0")}</i></div>
+            <div><span>Step details · {isCurrentStep ? "Current step" : `Viewing step ${selected.order}`}</span><i>{String(selected.order).padStart(2, "0")}</i></div>
             <h3>Step {selected.order} — {selected.title}</h3>
             {stepGoal(selected) ? <p className="detail-goal">{stepGoal(selected)}</p> : null}
             <h4>Requirements</h4>
@@ -180,6 +183,7 @@ export function WorkflowPanel({ workflow, progress, selectedId, loading, error, 
               </div>
             ) : null}
             {selected.id !== current?.id ? <button type="button" className="set-current-button" onClick={() => onSetCurrent(selected.id)}>Set as current</button> : null}
+            {viewingOtherStep && current ? <button type="button" className="set-current-button" onClick={() => onSelect(current.id)}>Return to current step</button> : null}
           </section>
         ) : null}
         {workflow.checkpoints?.length ? (
@@ -200,9 +204,10 @@ export function WorkflowPanel({ workflow, progress, selectedId, loading, error, 
           </section>
         ) : null}
         <div className="workflow-navigation workflow-side-nav">
-          <button type="button" onClick={onPrevious} disabled={currentIndex <= 0}>Previous</button>
-          <button type="button" className="mark-complete" onClick={onComplete} disabled={!current || currentDone}>{currentDone ? "Completed" : "Mark complete"}</button>
-          <button type="button" onClick={onNext} disabled={currentIndex < 0 || currentIndex >= workflow.steps.length - 1}>Next</button>
+          <button type="button" onClick={onPrevious} disabled={selectedIndex <= 0}>Previous</button>
+          <button type="button" className="mark-complete" onClick={onComplete} disabled={!current || currentDone || viewingOtherStep}>{currentDone && !viewingOtherStep ? "Completed" : "Mark complete"}</button>
+          <button type="button" onClick={onNext} disabled={selectedIndex < 0 || selectedIndex >= workflow.steps.length - 1}>Next</button>
+          {viewingOtherStep ? <p className="mark-complete-hint">Set this step as current before marking it complete.</p> : null}
         </div>
       </>
     );

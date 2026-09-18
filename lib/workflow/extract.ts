@@ -2,6 +2,7 @@ import { createAIRequestSessionId, generateJson, getModelName, getReasoningEffor
 import { WORKFLOW_SYSTEM_PROMPT } from "../ai/prompts";
 import { chunkSources, excerptFromChunk } from "../sources/chunks";
 import { AppError } from "../shared/api";
+import { hashString, logEvent } from "../logging/logger";
 import { labWorkflowSchema } from "../shared/schemas";
 import type { Citation, LabWorkflow, SourceDocument } from "../shared/types";
 import { prepareWorkflowContext } from "./context";
@@ -42,23 +43,49 @@ export async function extractWorkflow(sources: SourceDocument[], sessionId?: str
     { mode: "normal" as const, timeoutMs: 23_000, model: primaryModel },
     { mode: "compact" as const, timeoutMs: 23_000, model: fallbackModel }
   ];
+  const generationStartedAt = Date.now();
+  const sourceIds = sources.map((source) => source.id);
+  const inputCharacters = sources.reduce((sum, source) => sum + source.content.length, 0);
+  logEvent({
+    eventType: "workflow_generation_started",
+    sessionId: stableSessionId,
+    data: {
+      model: primaryModel || "not-configured",
+      reasoningEffort: getReasoningEffort("workflow"),
+      sourceCount: sources.length,
+      sourceIds,
+      characters: inputCharacters,
+      currentStepId: null
+    }
+  });
   let result: unknown;
+  let usedModel = primaryModel;
+  let attemptsMade = 0;
+
+  const failGeneration = (errorCode: string): never => {
+    logEvent({
+      eventType: "workflow_generation_failed",
+      sessionId: stableSessionId,
+      data: {
+        model: usedModel || "not-configured",
+        errorCode,
+        durationMs: Date.now() - generationStartedAt,
+        sourceCount: sources.length,
+        characters: inputCharacters,
+        attemptsMade
+      }
+    });
+    if (errorCode === "AI_TIMEOUT") {
+      throw new AppError("AI_TIMEOUT", "Workflow generation took too long. Try again with fewer source files.", 504);
+    }
+    throw new AppError("WORKFLOW_SCHEMA_ERROR", "The AI provider returned a workflow that did not match the required schema.", 502);
+  };
 
   for (let index = 0; index < attempts.length; index += 1) {
     const attempt = attempts[index];
+    usedModel = attempt.model;
+    attemptsMade = index + 1;
     const context = prepareWorkflowContext(sources, attempt.mode);
-    const startedAt = Date.now();
-    console.info("Workflow generation", {
-      sources: context.inputSourceCount,
-      totalCharacters: context.inputCharacters,
-      selectedSources: context.sourceNames,
-      chunks: context.chunks,
-      characters: context.characters,
-      model: attempt.model || "not-configured",
-      reasoningEffort: getReasoningEffort("workflow"),
-      attempt: index + 1,
-      timeoutMs: attempt.timeoutMs
-    });
     try {
       result = await generateJson(
         "workflow",
@@ -67,29 +94,51 @@ export async function extractWorkflow(sources: SourceDocument[], sessionId?: str
         stableSessionId,
         { timeoutMs: attempt.timeoutMs, requestLabel: `workflow-attempt-${index + 1}`, model: attempt.model }
       );
-      console.info("Workflow generation result", { model: attempt.model, reasoningEffort: getReasoningEffort("workflow"), characters: context.characters, attempt: index + 1, durationMs: Date.now() - startedAt, result: "success" });
       break;
     } catch (error) {
       const retryable = error instanceof AppError && (error.code === "AI_TIMEOUT" || error.code === "AI_PROVIDER_UNAVAILABLE");
-      console.warn("Workflow generation result", { model: attempt.model, reasoningEffort: getReasoningEffort("workflow"), characters: context.characters, attempt: index + 1, durationMs: Date.now() - startedAt, result: error instanceof AppError ? error.code : "UNKNOWN", retrying: retryable && index === 0 });
       if (retryable && index === 0) continue;
-      if (error instanceof AppError && error.code === "AI_TIMEOUT") {
-        throw new AppError("AI_TIMEOUT", "Workflow generation took too long. Try again with fewer source files.", 504);
-      }
+      if (error instanceof AppError && error.code === "AI_TIMEOUT") failGeneration("AI_TIMEOUT");
       throw error;
     }
   }
 
   const parsed = labWorkflowSchema.safeParse(result);
-  if (!parsed.success) {
-    console.error(parsed.error.flatten());
-    throw new AppError("WORKFLOW_SCHEMA_ERROR", "The AI provider returned a workflow that did not match the required schema.", 502);
-  }
+  if (!parsed.success) failGeneration("WORKFLOW_SCHEMA_ERROR");
   const sanitize = (citations: Citation[]) => citations.map((citation) => sanitizeCitation(citation, sources)).filter((citation): citation is Citation => Boolean(citation));
-  return {
+  const workflow: LabWorkflow = {
     ...parsed.data,
     steps: [...parsed.data.steps].sort((a, b) => a.order - b.order).map((step, index) => ({ ...normalizeWorkflowStep(step, index), order: index + 1, sources: sanitize(step.sources) })),
     checkpoints: parsed.data.checkpoints.map((checkpoint) => ({ ...checkpoint, sources: sanitize(checkpoint.sources) })),
     conflicts: parsed.data.conflicts.map((conflict) => ({ ...conflict, sources: sanitize(conflict.sources) }))
   };
+  logEvent({
+    eventType: "workflow_generation_completed",
+    sessionId: stableSessionId,
+    data: {
+      workflowId: `wf-${hashString(`${workflow.title}:${workflow.steps.map((step) => step.id).join(",")}`)}`,
+      title: workflow.title,
+      goal: workflow.goal,
+      stepCount: workflow.steps.length,
+      steps: workflow.steps.map((step) => ({
+        id: step.id,
+        order: step.order,
+        title: step.title,
+        goal: step.goal,
+        requirements: step.requirements,
+        whatToDo: step.whatToDo,
+        howToDoIt: step.howToDoIt,
+        expectedOutput: step.expectedOutput,
+        successCriteria: step.successCriteria,
+        warnings: step.warnings,
+        sources: step.sources.map((citation) => ({ sourceId: citation.sourceId, file: citation.file, section: citation.section }))
+      })),
+      checkpointCount: workflow.checkpoints.length,
+      conflictCount: workflow.conflicts.length,
+      model: usedModel || "not-configured",
+      attemptsMade,
+      durationMs: Date.now() - generationStartedAt
+    }
+  });
+  return workflow;
 }

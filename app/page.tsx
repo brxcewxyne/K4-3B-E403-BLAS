@@ -4,12 +4,15 @@ import { useMemo, useState } from "react";
 import { AddMaterialsModal } from "@/components/add-materials-modal";
 import { BackgroundVideo } from "@/components/background-video";
 import { ChatPanel, type UiMessage } from "@/components/chat-panel";
+import { LogMenu } from "@/components/log-menu";
 import { SourceReader } from "@/components/source-reader";
 import { SourceSidebar } from "@/components/source-sidebar";
 import { Toast } from "@/components/toast";
 import { TopBar } from "@/components/top-bar";
 import { WorkflowPanel } from "@/components/workflow-panel";
 import { askLabGuide, generateWorkflow, ingestFiles, ingestRepository } from "@/lib/client/api";
+import { appendSessionEvent, setSessionLogContext } from "@/lib/logging/session-log";
+import { summarizeSourceMeta, truncateText } from "@/lib/logging/redact";
 import type { Citation, LabProgress, LabWorkflow, SourceDocument } from "@/lib/shared/types";
 import { completeAndAdvance, createChatWorkflowContext, initialProgress, moveToStep, normalizeProgress, progressStorageKey } from "@/lib/workflow/progress";
 
@@ -59,6 +62,8 @@ export default function Home() {
   async function runWorkflow(nextSources: SourceDocument[], nextRepository = repository) {
     setWorkflowLoading(true);
     setWorkflowError("");
+    const startedAt = Date.now();
+    appendSessionEvent("workflow_generation_started", { sourceCount: nextSources.length, sourceIds: nextSources.map((source) => source.id) });
     try {
       const result = await generateWorkflow(nextSources);
       const saved = readStoredProgress(nextSources, result.workflow, nextRepository);
@@ -66,16 +71,40 @@ export default function Home() {
       setProgress(saved);
       persist(saved, nextSources, nextRepository);
       setSelectedStepId(saved.currentStepId || "");
+      appendSessionEvent("workflow_generation_completed", {
+        title: result.workflow.title,
+        stepCount: result.workflow.steps.length,
+        steps: result.workflow.steps.map((step) => ({
+          id: step.id,
+          order: step.order,
+          title: step.title,
+          requirements: step.requirements,
+          whatToDo: step.whatToDo,
+          howToDoIt: step.howToDoIt,
+          successCriteria: step.successCriteria,
+          sources: step.sources.map((citation) => ({ sourceId: citation.sourceId, file: citation.file, section: citation.section }))
+        })),
+        durationMs: Date.now() - startedAt
+      });
       setMessages((current) => current.length ? current : [{ id: "welcome", role: "assistant", content: `I’ve extracted **${result.workflow.steps.length} workflow steps**. Ask what to do next or open the workflow checklist.` }]);
       notify("Workflow ready");
     } catch (error) {
-      setWorkflowError(error instanceof Error ? error.message : "Workflow generation failed.");
+      const message = error instanceof Error ? error.message : "Workflow generation failed.";
+      appendSessionEvent("workflow_generation_failed", { error: message, durationMs: Date.now() - startedAt });
+      setWorkflowError(message);
     } finally {
       setWorkflowLoading(false);
     }
   }
 
   async function buildWorkspace(nextSources: SourceDocument[], nextRepository?: string) {
+    const repoId = nextRepository ? nextRepository.replace("https://github.com/", "") : "local-files";
+    setSessionLogContext({ repoId });
+    appendSessionEvent("source_ingest_completed", {
+      repository: nextRepository ?? null,
+      fileCount: nextSources.length,
+      files: nextSources.map((source) => summarizeSourceMeta(source))
+    });
     setSources(nextSources);
     setRepository(nextRepository);
     setSelectedSourceId(nextSources[0]?.id || "");
@@ -91,8 +120,16 @@ export default function Home() {
     void runWorkflow(nextSources, nextRepository);
   }
 
-  async function addRepository(url: string) { const result = await ingestRepository(url); await buildWorkspace(result.sources, result.repository); }
-  async function addFiles(files: File[]) { const result = await ingestFiles(files); await buildWorkspace(result.sources); }
+  async function addRepository(url: string) {
+    setSessionLogContext({ repoId: url.replace("https://github.com/", "") });
+    appendSessionEvent("source_ingest_started", { inputKind: "repository", repositoryUrl: url });
+    const result = await ingestRepository(url); await buildWorkspace(result.sources, result.repository);
+  }
+  async function addFiles(files: File[]) {
+    setSessionLogContext({ repoId: "local-files" });
+    appendSessionEvent("source_ingest_started", { inputKind: "files", fileCount: files.length, fileNames: files.map((file) => file.name) });
+    const result = await ingestFiles(files); await buildWorkspace(result.sources);
+  }
   async function addPaste(name: string, content: string) { const safeName = /\.(md|mdx)$/i.test(name) ? name : `${name || "notes"}.md`; await addFiles([new File([content], safeName, { type: "text/markdown" })]); }
 
   async function sendMessage(question: string) {
@@ -101,17 +138,37 @@ export default function Home() {
     setMessages((current) => [...current, user]);
     setThinking(true);
     setChatError("");
+    const startedAt = Date.now();
+    const questionSnapshot = question;
+    const currentStepSnapshot = progress.currentStepId;
+    const selectedStepSnapshot = selectedStepId || null;
+    appendSessionEvent("chat_request_started", {
+      question: truncateText(questionSnapshot, 2000),
+      currentStepId: currentStepSnapshot,
+      selectedStepId: selectedStepSnapshot,
+      sourceIds: sources.map((source) => source.id)
+    });
     try {
       const answer = await askLabGuide({
         question,
         sources,
         progress: workflow ? progress : undefined,
         workflowContext: workflow ? createChatWorkflowContext(workflow, progress) : undefined,
-        history: messages.slice(-8).map((message) => ({ role: message.role, content: message.content }))
+        history: messages.slice(-8).map((message) => ({ role: message.role, content: message.content })),
+        selectedStepId: selectedStepId || undefined
+      });
+      appendSessionEvent("chat_request_completed", {
+        question: truncateText(questionSnapshot, 2000),
+        answer: truncateText(answer.answer, 8000),
+        citations: answer.citations.map((citation) => ({ sourceId: citation.sourceId, file: citation.file, section: citation.section })),
+        currentStepId: currentStepSnapshot,
+        durationMs: Date.now() - startedAt
       });
       setMessages((current) => [...current, { id: `assistant-${Date.now()}`, role: "assistant", content: answer.answer, citations: answer.citations }]);
     } catch (error) {
-      setChatError(error instanceof Error ? error.message : "Chat request failed.");
+      const message = error instanceof Error ? error.message : "Chat request failed.";
+      appendSessionEvent("chat_request_failed", { question: truncateText(questionSnapshot, 2000), currentStepId: currentStepSnapshot, error: message, durationMs: Date.now() - startedAt });
+      setChatError(message);
     } finally {
       setThinking(false);
     }
@@ -126,45 +183,52 @@ export default function Home() {
     if (window.matchMedia("(max-width: 1050px)").matches) setPanel("sources");
   }
 
+  function selectStep(id: string, method: "click" | "previous" | "next" | "return" = "click") {
+    const step = workflow?.steps.find((item) => item.id === id);
+    if (!step) return;
+    setSelectedStepId(id);
+    appendSessionEvent("workflow_step_selected", { stepId: id, order: step.order, title: step.title, method });
+  }
+
   function completeCurrent() {
     if (!currentStep || !workflow) return;
     const next = completeAndAdvance(workflow, progress);
     setProgress(next);
     persist(next);
     setSelectedStepId(next.currentStepId || "");
+    appendSessionEvent("workflow_step_completed", { stepId: currentStep.id, order: currentStep.order, title: currentStep.title, nextStepId: next.currentStepId });
     notify(`Step ${currentStep.order} completed`);
   }
 
-  function moveCurrent(offset: -1 | 1) {
-    if (!workflow || !currentStep) return;
-    const index = workflow.steps.findIndex((step) => step.id === currentStep.id);
+  function moveSelected(offset: -1 | 1) {
+    if (!workflow) return;
+    const anchor = selectedStepId || progress.currentStepId;
+    const index = workflow.steps.findIndex((step) => step.id === anchor);
     const target = workflow.steps[index + offset];
     if (!target) return;
-    const next = moveToStep(progress, target.id);
-    setProgress(next);
-    persist(next);
-    setSelectedStepId(target.id);
-    notify(`Current step: ${target.title}`);
+    selectStep(target.id, offset < 0 ? "previous" : "next");
   }
 
   function setCurrentStep(id: string) {
     if (!workflow?.steps.some((step) => step.id === id)) return;
+    const previousCurrentStepId = progress.currentStepId;
     const next = moveToStep(progress, id);
     setProgress(next);
     persist(next);
     setSelectedStepId(id);
+    appendSessionEvent("workflow_step_set_current", { stepId: id, previousCurrentStepId });
     notify("Current step updated");
   }
 
   return (
     <main className="app-shell">
       <BackgroundVideo />
-      <TopBar title={labTitle} completed={progress.completedStepIds.length} total={workflow?.steps.length || 0} />
+      <TopBar title={labTitle} completed={progress.completedStepIds.length} total={workflow?.steps.length || 0} actions={<LogMenu />} />
       <nav className="panel-tabs" aria-label="Workspace panels">{(["sources", "chat"] as Panel[]).map((item) => <button type="button" key={item} className={panel === item ? "active" : ""} onClick={() => setPanel(item)}>{item[0].toUpperCase() + item.slice(1)}</button>)}</nav>
       <div className={`workspace active-${panel} ${workflowOpen ? "workflow-open" : "workflow-closed"}`}>
         <SourceSidebar sources={sources} selectedId={selectedSourceId} repository={repository} onSelect={selectSource} onOpen={openSource} onAdd={() => setModalOpen(true)} />
         <ChatPanel messages={messages} thinking={thinking} error={chatError} disabled={!sources.length} onSend={sendMessage} onCitation={openCitation} onAdd={() => setModalOpen(true)} onDismissError={() => setChatError("")} />
-        <WorkflowPanel workflow={workflow} progress={progress} selectedId={selectedStepId} loading={workflowLoading} error={workflowError} hasSources={Boolean(sources.length)} open={workflowOpen} onOpenChange={setWorkflowOpen} onSelect={setSelectedStepId} onOpenCitation={openCitation} onSetCurrent={setCurrentStep} onComplete={completeCurrent} onPrevious={() => moveCurrent(-1)} onNext={() => moveCurrent(1)} onRetry={() => void runWorkflow(sources, repository)} />
+        <WorkflowPanel workflow={workflow} progress={progress} selectedId={selectedStepId} loading={workflowLoading} error={workflowError} hasSources={Boolean(sources.length)} open={workflowOpen} onOpenChange={setWorkflowOpen} onSelect={(id) => selectStep(id)} onOpenCitation={openCitation} onSetCurrent={setCurrentStep} onComplete={completeCurrent} onPrevious={() => moveSelected(-1)} onNext={() => moveSelected(1)} onRetry={() => void runWorkflow(sources, repository)} />
       </div>
       {modalOpen ? <AddMaterialsModal onClose={() => setModalOpen(false)} onRepository={addRepository} onFiles={addFiles} onPaste={addPaste} /> : null}
       {readerSource ? <SourceReader source={readerSource} section={readerTarget?.section} excerpt={readerTarget?.excerpt} onClose={() => setReaderTarget(null)} /> : null}
