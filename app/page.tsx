@@ -11,6 +11,7 @@ import { Toast } from "@/components/toast";
 import { TopBar } from "@/components/top-bar";
 import { WorkflowPanel } from "@/components/workflow-panel";
 import { askLabGuide, generateWorkflow, ingestFiles, ingestRepository } from "@/lib/client/api";
+import { checkLabScope, outOfScopeResponse } from "@/lib/chat/scope";
 import { appendSessionEvent, setSessionLogContext } from "@/lib/logging/session-log";
 import { summarizeSourceMeta, truncateText } from "@/lib/logging/redact";
 import type { Citation, LabProgress, LabWorkflow, SourceDocument } from "@/lib/shared/types";
@@ -140,12 +141,35 @@ export default function Home() {
     if (result.warnings?.length) notify(`${result.warnings.length} file${result.warnings.length > 1 ? "s" : ""} skipped — ${result.warnings[0]}`);
     await buildWorkspace(result.sources);
   }
-  async function addPaste(name: string, content: string) { const safeName = /\.(md|mdx)$/i.test(name) ? name : `${name || "notes"}.md`; await addFiles([new File([content], safeName, { type: "text/markdown" })]); }
+  async function addPaste(name: string, content: string) { const safeName = /\.(md|mdx|txt)$/i.test(name) ? name : `${name || "notes"}.md`; await addFiles([new File([content], safeName, { type: "text/markdown" })]); }
 
   async function sendMessage(question: string) {
     if (!sources.length || thinking) return;
     const user: UiMessage = { id: `user-${Date.now()}`, role: "user", content: question };
     setMessages((current) => [...current, user]);
+    // Lab-scope guard first: unrelated questions get a local refusal, no provider call.
+    const scopeSteps = workflow ? [workflow.steps.find((step) => step.id === progress.currentStepId)].filter((step): step is NonNullable<typeof step> => Boolean(step)) : [];
+    const scope = checkLabScope(question, {
+      labTitle,
+      fileNames: sources.map((source) => source.name),
+      headings: sources.flatMap((source) => source.headings),
+      stepTitles: scopeSteps.map((step) => step.title)
+    });
+    if (!scope.inScope) {
+      const refusal = outOfScopeResponse(question);
+      appendSessionEvent("chat_request_completed", {
+        question: truncateText(question, 2000),
+        answer: refusal,
+        citations: [],
+        currentStepId: progress.currentStepId,
+        scope: "out-of-scope",
+        scopeReason: scope.reason,
+        servedLocally: true,
+        durationMs: 0
+      });
+      setMessages((current) => [...current, { id: `assistant-${Date.now()}`, role: "assistant", content: refusal }]);
+      return;
+    }
     setThinking(true);
     setChatError("");
     const startedAt = Date.now();
@@ -165,7 +189,8 @@ export default function Home() {
         progress: workflow ? progress : undefined,
         workflowContext: workflow ? createChatWorkflowContext(workflow, progress) : undefined,
         history: messages.slice(-8).map((message) => ({ role: message.role, content: message.content })),
-        selectedStepId: selectedStepId || undefined
+        selectedStepId: selectedStepId || undefined,
+        labTitle: labTitle || undefined
       });
       appendSessionEvent("chat_request_completed", {
         question: truncateText(questionSnapshot, 2000),

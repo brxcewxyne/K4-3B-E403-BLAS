@@ -23,7 +23,8 @@ const requestSchema = z.object({
     completedSteps: z.array(z.object({ id: z.string(), order: z.number(), title: z.string() })).max(200)
   }).optional(),
   history: z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().max(6000) })).max(10).optional(),
-  selectedStepId: z.string().max(200).optional()
+  selectedStepId: z.string().max(200).optional(),
+  labTitle: z.string().max(500).optional()
 });
 
 export async function POST(request: Request) {

@@ -64,6 +64,7 @@ export function ChatPanel({ messages, thinking, error, disabled, onSend, onCitat
           <textarea value={value} onChange={(event) => setValue(event.target.value)} placeholder={disabled ? "Add materials to start asking questions…" : "Ask about your lab…"} disabled={disabled} rows={2} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} />
           <div className="composer-tools"><div><button type="button" onClick={onAdd}><PlusIcon size={14} />Material</button><span>{disabled ? "Sources required" : "Source-grounded AI"}</span></div><button className="send-button" type="submit" aria-label="Send message" disabled={!value.trim() || disabled || thinking}><SendIcon size={17} /></button></div>
         </form>
+        <p className="chat-scope-hint">Ask about this lab and its materials.</p>
       </div>
     </section>
   );

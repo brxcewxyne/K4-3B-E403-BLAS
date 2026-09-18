@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { CloseIcon, UploadIcon } from "./icons";
+import { isSupportedExtension, MANUAL_UPLOAD_ERROR, MANUAL_UPLOAD_EXTENSIONS } from "@/lib/sources/upload-extensions";
 
 type Mode = "repository" | "upload" | "paste";
 type Props = {
@@ -63,17 +64,25 @@ export function AddMaterialsModal({ onClose, onRepository, onFiles, onPaste }: P
           ) : null}
           {mode === "upload" ? (
             <div>
-              <label className="drop-area" htmlFor="files"><UploadIcon size={23} /><strong>{files.length ? `${files.length} file${files.length > 1 ? "s" : ""} selected` : "Choose Markdown files"}</strong><span>.md · .mdx · up to 1 MB each</span><input id="files" type="file" accept=".md,.mdx" multiple onChange={(event) => { setFiles(Array.from(event.target.files || [])); setFolderFiles([]); }} disabled={busy} /></label>
-              <label className="drop-area" htmlFor="folder"><UploadIcon size={23} /><strong>{folderFiles.length ? `${folderFiles.length} file${folderFiles.length > 1 ? "s" : ""} selected from folder` : "Or choose a folder"}</strong><span>relative paths preserved · .md · .mdx</span><input
+              <label className="drop-area" htmlFor="files"><UploadIcon size={23} /><strong>{files.length ? `${files.length} file${files.length > 1 ? "s" : ""} selected` : "Choose Markdown files"}</strong><span>Supported external files: .md, .mdx, .txt · up to 1 MB each</span><input id="files" type="file" accept=".md,.mdx,.txt" multiple onChange={(event) => {
+                const picked = Array.from(event.target.files || []);
+                const rejected = picked.filter((file) => !isSupportedExtension(file.name, MANUAL_UPLOAD_EXTENSIONS));
+                setFiles(picked.filter((file) => isSupportedExtension(file.name, MANUAL_UPLOAD_EXTENSIONS)));
+                setFolderFiles([]);
+                setError(rejected.length ? `${MANUAL_UPLOAD_ERROR} Rejected: ${rejected.map((file) => file.name).join(", ")}` : "");
+              }} disabled={busy} /></label>
+              <label className="drop-area" htmlFor="folder"><UploadIcon size={23} /><strong>{folderFiles.length ? `${folderFiles.length} file${folderFiles.length > 1 ? "s" : ""} selected from folder` : "Or choose a folder"}</strong><span>relative paths preserved · .md · .mdx · .txt</span><input
                 id="folder"
                 ref={(element) => { if (element) element.setAttribute("webkitdirectory", ""); }}
                 type="file"
-                accept=".md,.mdx"
+                accept=".md,.mdx,.txt"
                 multiple
                 onChange={(event) => {
                   const picked = Array.from((event.target.files || []) as unknown as FolderCapableFile[]);
-                  setFolderFiles(picked);
+                  const rejected = picked.filter((file) => !isSupportedExtension(file.name, MANUAL_UPLOAD_EXTENSIONS));
+                  setFolderFiles(picked.filter((file) => isSupportedExtension(file.name, MANUAL_UPLOAD_EXTENSIONS)));
                   setFiles([]);
+                  setError(rejected.length ? `${MANUAL_UPLOAD_ERROR} Rejected: ${rejected.map((file) => file.name).join(", ")}` : "");
                 }}
                 disabled={busy}
               /></label>

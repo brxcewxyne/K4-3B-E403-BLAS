@@ -184,6 +184,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visib
 .composer-tools > div { gap: 6px; }
 .composer-tools button:not(.send-button), .composer-tools span { display: flex; align-items: center; gap: 5px; min-height: 38px; padding: 8px 14px; border: 1px solid rgba(255, 255, 255, .07); border-radius: 999px; background: transparent; color: rgba(255, 255, 255, .82); font-size: 14px; }
 .send-button { display: grid; width: 44px; height: 44px; place-items: center; border: 0; border-radius: 50%; background: linear-gradient(163deg, #fbbc94 0%, #f49d70 46%, #e88654 100%); color: #fff; box-shadow: 0 7px 22px rgba(232, 134, 84, .33); }
+.chat-scope-hint { margin: 8px auto 0; color: rgba(255, 255, 255, .52); font-size: 13px; line-height: 1.45; text-align: center; }
 .send-button:disabled { opacity: .32; box-shadow: none; }
 
 /* Workflow right column: participates in grid flow on desktop, so chat reflows instead of being covered */
@@ -202,7 +203,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visib
 .workflow-side-head h2 { margin: 6px 0 0; color: var(--text-strong); font-size: clamp(19px, 1.4vw, 21px); font-weight: 600; line-height: 1.3; overflow-wrap: break-word; text-shadow: 0 2px 14px rgba(0, 0, 0, .35); }
 .workflow-side-body { display: flex; min-height: 0; flex: 1 1 auto; flex-direction: column; }
 .workflow-side-meta { flex: 0 0 auto; padding: 20px 26px 0; }
-.workflow-side .workflow-list { flex: 0 0 auto; padding: 14px 16px 6px; }
+.workflow-side .workflow-list { display: grid; flex: 0 0 auto; gap: 10px; padding: 14px 16px 6px; }
 .workflow-side .step-detail { margin: 14px 18px 16px; }
 .workflow-side-nav { position: sticky; bottom: 0; flex: 0 0 auto; margin: auto 18px 18px; padding: 14px; border: 1px solid rgba(255, 255, 255, .08); border-radius: 13px; background: rgba(18, 20, 24, .55); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); }
 
@@ -231,12 +232,12 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visib
 .focus-card ol { list-style: decimal; padding-left: 20px; }
 .focus-card li, .focus-card p { color: rgba(255, 255, 255, .84); font-size: 15px; line-height: 1.55; overflow-wrap: break-word; }
 .focus-card div { padding-top: 10px; border-top: 1px solid rgba(255, 255, 255, .06); }
-.workflow-list { flex: 0 0 auto; padding: 6px 9px; }
+.workflow-list { display: grid; flex: 0 0 auto; gap: 10px; padding: 6px 9px; }
 .workflow-row { display: grid; width: 100%; min-height: 46px; grid-template-columns: 28px minmax(0, 1fr); align-items: center; gap: 10px; padding: 10px; border: 1px solid transparent; border-radius: 10px; background: transparent; text-align: left; transition: background .15s var(--ease), border-color .15s var(--ease); }
 .workflow-row:hover { background: rgba(255, 255, 255, .02); }
 .workflow-row.active { border-color: rgba(244, 157, 112, .2); background: rgba(255, 255, 255, .03); box-shadow: inset 3px 0 var(--peach); }
-.workflow-row.inspected { border-color: rgba(255, 255, 255, .16); background: rgba(255, 255, 255, .055); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .06); }
-.workflow-row.inspected strong { color: #ffffff; }
+.workflow-row.inspected { border-color: rgba(255, 255, 255, .1); background: rgba(255, 255, 255, .035); box-shadow: none; }
+.workflow-row.inspected strong { color: rgba(255, 255, 255, .95); }
 .step-marker { display: grid; width: 26px; height: 26px; place-items: center; border: 1px solid rgba(255, 255, 255, .11); border-radius: 50%; color: var(--muted2); font-size: 14px; }
 .workflow-row.active .step-marker { color: var(--peach); }
 .workflow-row.done .step-marker { color: var(--green); }

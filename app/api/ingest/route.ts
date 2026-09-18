@@ -3,6 +3,7 @@ import { failure, success, AppError } from "@/lib/shared/api";
 import { isVerboseEvalLogs, logEvent } from "@/lib/logging/logger";
 import { summarizeSourceMeta } from "@/lib/logging/redact";
 import { normalizeSources } from "@/lib/sources/normalize";
+import { isSupportedExtension, MANUAL_UPLOAD_ERROR, MANUAL_UPLOAD_EXTENSIONS } from "@/lib/sources/upload-extensions";
 import type { SourceDocument } from "@/lib/shared/types";
 
 export const runtime = "nodejs";
@@ -63,8 +64,8 @@ export async function POST(request: Request) {
       for (let index = 0; index < uploads.length; index += 1) {
         const file = uploads[index];
         const path = (pathOverride[index] || file.name).replace(/\\/g, "/").replace(/^\.?\//, "");
-        if (!/\.(md|mdx)$/i.test(path)) {
-          warnings.push(`Skipped ${path || file.name}: not a Markdown file.`);
+        if (!isSupportedExtension(path, MANUAL_UPLOAD_EXTENSIONS)) {
+          warnings.push(`Skipped ${path || file.name}: ${MANUAL_UPLOAD_ERROR}`);
           continue;
         }
         if (file.size > 1_000_000) {
@@ -82,7 +83,7 @@ export async function POST(request: Request) {
         if (warnings.length) throw new AppError("NO_MARKDOWN", warnings[0]);
         throw new AppError("INVALID_INPUT", "Upload at least one Markdown file.");
       }
-      const result = { repository: null, branch: null, sources: normalizeSources(raw), warnings, ingestionComplete: warnings.length === 0 };
+      const result = { repository: null, branch: null, sources: normalizeSources(raw, { extensions: MANUAL_UPLOAD_EXTENSIONS }), warnings, ingestionComplete: warnings.length === 0 };
       logIngestCompleted({ repoId: "local-files", repository: null, branch: null, sources: result.sources, startedAt, discovered: uploads.length, failed: warnings.length, ingestionComplete: result.ingestionComplete });
       return success(result);
     }

@@ -47,6 +47,6 @@ export async function generateWorkflow(sources: SourceDocument[]) {
   return data<{ workflow: LabWorkflow; generationMode?: "ai" | "fallback"; fallbackReason?: "timeout" | "provider_error" }>(await fetch("/api/workflow", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sources, sessionId: providerSessionId() }) }));
 }
 
-export async function askLabGuide(input: { question: string; sources: SourceDocument[]; progress?: LabProgress; workflowContext?: ChatWorkflowContext; history?: ChatTurn[]; selectedStepId?: string }) {
+export async function askLabGuide(input: { question: string; sources: SourceDocument[]; progress?: LabProgress; workflowContext?: ChatWorkflowContext; history?: ChatTurn[]; selectedStepId?: string; labTitle?: string }) {
   return data<ChatAnswer>(await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...input, sessionId: providerSessionId() }) }));
 }

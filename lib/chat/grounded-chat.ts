@@ -4,6 +4,7 @@ import { chunkSources, excerptFromChunk, rankChunks } from "../sources/chunks";
 import { AppError } from "../shared/api";
 import { truncateText } from "../logging/redact";
 import { logEvent } from "../logging/logger";
+import { checkLabScope, outOfScopeResponse } from "./scope";
 import { chatAnswerSchema } from "../shared/schemas";
 import type { ChatAnswer, ChatTurn, ChatWorkflowContext, LabProgress, SourceDocument } from "../shared/types";
 
@@ -51,7 +52,30 @@ ${viewing ? `Viewing step (UI browse-only, NOT progress): ${viewing.order}. ${vi
 Lab goal: ${workflow.goal}`;
 }
 
-export async function answerGroundedQuestion(input: { question: string; sources: SourceDocument[]; workflowContext?: ChatWorkflowContext; progress?: LabProgress; sessionId?: string; history?: ChatTurn[]; selectedStepId?: string }): Promise<ChatAnswer> {
+export async function answerGroundedQuestion(input: { question: string; sources: SourceDocument[]; workflowContext?: ChatWorkflowContext; progress?: LabProgress; sessionId?: string; history?: ChatTurn[]; selectedStepId?: string; labTitle?: string }): Promise<ChatAnswer> {
+  // Lab-scope guard first: unrelated questions get a local refusal, no provider call.
+  const scopeSteps = [input.workflowContext?.currentStep, input.workflowContext?.previousStep, input.workflowContext?.nextStep, ...(input.workflowContext?.completedSteps || [])];
+  const scope = checkLabScope(input.question, {
+    labTitle: input.labTitle || input.workflowContext?.goal,
+    fileNames: input.sources.map((source) => source.name),
+    headings: input.sources.flatMap((source) => source.headings),
+    stepTitles: scopeSteps.filter((step): step is NonNullable<typeof step> => Boolean(step)).map((step) => step.title)
+  });
+  if (!scope.inScope) {
+    logEvent({
+      eventType: "chat_request_completed",
+      sessionId: input.sessionId,
+      data: {
+        scope: "out-of-scope",
+        scopeReason: scope.reason,
+        servedLocally: true,
+        question: truncateText(input.question, 2000),
+        currentStepId: input.progress?.currentStepId ?? null,
+        durationMs: 0
+      }
+    });
+    return { answer: outOfScopeResponse(input.question), citations: [] };
+  }
   const chunks = selectChatChunks(input.sources, input.question);
   const context = chunks.map((chunk) => `===== CHUNK sourceId=${chunk.sourceId} file=${chunk.file} section=${chunk.section} =====\n${chunk.content}`).join("\n\n");
   const prompt = `Return JSON: { "answer": "string", "citations": [{ "sourceId": "provided id", "file": "provided file", "section": "provided heading", "excerpt": "verbatim excerpt" }] }
