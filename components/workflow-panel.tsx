@@ -90,9 +90,9 @@ export function WorkflowPanel({ workflow, progress, selectedId, loading, error, 
   const total = workflow?.steps.length || 0;
   const completed = progress.completedStepIds.length;
   const currentIndex = workflow ? workflow.steps.findIndex((step) => step.id === progress.currentStepId) : -1;
-  const selectedIndex = workflow && selected ? workflow.steps.findIndex((step) => step.id === selected.id) : -1;
   const current = workflow ? workflow.steps[currentIndex] || workflow.steps[0] : undefined;
   const selected = workflow ? workflow.steps.find((step) => step.id === selectedId) || current || workflow.steps[0] : undefined;
+  const selectedIndex = workflow && selected ? workflow.steps.findIndex((step) => step.id === selected.id) : -1;
   const currentDone = current ? progress.completedStepIds.includes(current.id) : false;
   const isCurrentStep = Boolean(current && selected && selected.id === current.id);
   const viewingOtherStep = Boolean(current && selected && selected.id !== current.id);
