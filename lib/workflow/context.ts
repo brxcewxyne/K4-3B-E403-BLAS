@@ -10,12 +10,51 @@ const PRIORITY_TERMS = [
   "lab",
   "checkpoint",
   "setup",
+  "install",
+  "installation",
+  "prerequisite",
+  "requirements",
+  "environment",
+  "dependency",
+  "dependencies",
+  "configuration",
   "instruction",
   "assignment",
   "requirement",
   "evaluation",
-  "objective"
+  "objective",
+  "deliverable",
+  "usage"
 ];
+
+/**
+ * Deterministic setup-evidence signals (Q pre-pass): filename + heading
+ * matches that indicate environment/installation content. Used to guarantee
+ * setup docs reach the workflow context even when general ranking would cut
+ * them — reduction happens at chunk level, never by silently dropping files.
+ */
+const SETUP_TERMS = [
+  "setup",
+  "install",
+  "installation",
+  "prerequisite",
+  "requirements",
+  "environment",
+  "venv",
+  "virtualenv",
+  "virtual environment",
+  "conda",
+  "dependencies",
+  "dependency",
+  "configuration",
+  "dotenv",
+  "getting started",
+  "python",
+  "pip",
+  "npm",
+  "docker"
+];
+const SETUP_RESERVE_SLOTS = 2;
 const SAFE_EXCLUSIONS = /(?:^|[/_.-])(license|changelog|code[-_ ]of[-_ ]conduct|contributing|security)(?:[/_.-]|$)/i;
 
 type ContextMode = "normal" | "compact";
@@ -25,9 +64,21 @@ export type WorkflowContext = {
   characters: number;
   chunks: number;
   sourceNames: string[];
+  /** IDs of documents represented in the payload (for sourcesAvailable vs represented logging). */
+  selectedSourceIds: string[];
+  /** Setup-evidence documents guaranteed a slot (sourceId + path only). */
+  setupEvidence: Array<{ sourceId: string; path: string }>;
   inputSourceCount: number;
   inputCharacters: number;
 };
+
+/** Lightweight setup-evidence score from filename + headings (no LLM call). Exported for regression tests. */
+export function setupScore(source: Pick<SourceDocument, "name" | "path" | "headings">): number {
+  const haystack = `${source.name} ${source.path} ${source.headings.join(" ")}`.toLowerCase();
+  const hits = SETUP_TERMS.reduce((count, term) => count + (haystack.includes(term) ? 1 : 0), 0);
+  const filenameHits = SETUP_TERMS.reduce((count, term) => count + (`${source.name} ${source.path}`.toLowerCase().includes(term) ? 1 : 0), 0);
+  return filenameHits * 12 + hits * 4;
+}
 
 function relevance(value: string) {
   const normalized = value.toLowerCase();
@@ -56,7 +107,21 @@ export function prepareWorkflowContext(sources: SourceDocument[], mode: ContextM
   const documentLimit = mode === "compact" ? 4 : 10;
   const chunkLimit = mode === "compact" ? 6 : 12;
   const budget = mode === "compact" ? WORKFLOW_RETRY_CHAR_BUDGET : WORKFLOW_CONTEXT_CHAR_BUDGET;
-  const selectedDocuments = preferred.slice(0, documentLimit);
+  const reserveSlots = Math.min(SETUP_RESERVE_SLOTS, documentLimit);
+  const baseSelection = preferred.slice(0, documentLimit);
+  const baseIds = new Set(baseSelection.map(({ source }) => source.id));
+  // Guarantee: top setup-evidence documents keep a slot even when general
+  // ranking would cut them. Lowest-ranked general picks make room instead.
+  const setupPicks = preferred
+    .filter(({ source }) => !baseIds.has(source.id) && setupScore(source) > 0)
+    .sort((a, b) => setupScore(b.source) - setupScore(a.source) || a.index - b.index)
+    .slice(0, reserveSlots);
+  const selectedDocuments = setupPicks.length
+    ? [...baseSelection.slice(0, Math.max(0, documentLimit - setupPicks.length)), ...setupPicks]
+    : baseSelection;
+  const setupEvidence = selectedDocuments
+    .filter(({ source }) => setupScore(source) > 0)
+    .map(({ source }) => ({ sourceId: source.id, path: source.path }));
   const documentScores = new Map(selectedDocuments.map(({ source, score }) => [source.id, score]));
   const chunks = chunkSources(selectedDocuments.map(({ source }) => source))
     .map((chunk, index) => ({ chunk, index, score: (documentScores.get(chunk.sourceId) || 0) * 100 + relevance(chunk.section) * 10 }))
@@ -65,6 +130,7 @@ export function prepareWorkflowContext(sources: SourceDocument[], mode: ContextM
 
   const blocks: string[] = [];
   const includedNames = new Set<string>();
+  const includedIds = new Set<string>();
   let characters = 0;
   for (const { chunk } of chunks) {
     const header = chunkBlock(chunk, "");
@@ -75,6 +141,7 @@ export function prepareWorkflowContext(sources: SourceDocument[], mode: ContextM
     blocks.push(block);
     characters += separatorLength + block.length;
     includedNames.add(chunk.file);
+    includedIds.add(chunk.sourceId);
   }
 
   return {
@@ -82,6 +149,8 @@ export function prepareWorkflowContext(sources: SourceDocument[], mode: ContextM
     characters,
     chunks: blocks.length,
     sourceNames: [...includedNames],
+    selectedSourceIds: [...includedIds],
+    setupEvidence,
     inputSourceCount: sources.length,
     inputCharacters: sources.reduce((sum, source) => sum + source.content.length, 0)
   };

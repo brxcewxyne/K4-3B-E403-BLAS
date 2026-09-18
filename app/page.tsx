@@ -123,12 +123,16 @@ export default function Home() {
   async function addRepository(url: string) {
     setSessionLogContext({ repoId: url.replace("https://github.com/", "") });
     appendSessionEvent("source_ingest_started", { inputKind: "repository", repositoryUrl: url });
-    const result = await ingestRepository(url); await buildWorkspace(result.sources, result.repository);
+    const result = await ingestRepository(url);
+    if (result.warnings?.length) notify(`${result.sources.length} files imported, ${result.warnings.length} skipped — ${result.warnings[0]}`);
+    await buildWorkspace(result.sources, result.repository);
   }
-  async function addFiles(files: File[]) {
+  async function addFiles(files: File[], paths?: string[]) {
     setSessionLogContext({ repoId: "local-files" });
     appendSessionEvent("source_ingest_started", { inputKind: "files", fileCount: files.length, fileNames: files.map((file) => file.name) });
-    const result = await ingestFiles(files); await buildWorkspace(result.sources);
+    const result = await ingestFiles(files, paths);
+    if (result.warnings?.length) notify(`${result.warnings.length} file${result.warnings.length > 1 ? "s" : ""} skipped — ${result.warnings[0]}`);
+    await buildWorkspace(result.sources);
   }
   async function addPaste(name: string, content: string) { const safeName = /\.(md|mdx)$/i.test(name) ? name : `${name || "notes"}.md`; await addFiles([new File([content], safeName, { type: "text/markdown" })]); }
 

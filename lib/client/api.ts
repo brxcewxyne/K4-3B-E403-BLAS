@@ -33,13 +33,14 @@ async function data<T>(response: Response): Promise<T> {
 }
 
 export async function ingestRepository(repositoryUrl: string) {
-  return data<{ repository: string; branch: string; sources: SourceDocument[] }>(await fetch("/api/ingest", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ repositoryUrl }) }));
+  return data<{ repository: string; branch: string; sources: SourceDocument[]; warnings: string[]; ingestionComplete: boolean }>(await fetch("/api/ingest", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ repositoryUrl }) }));
 }
 
-export async function ingestFiles(files: File[]) {
+export async function ingestFiles(files: File[], paths?: string[]) {
   const form = new FormData();
   files.forEach((file) => form.append("files", file));
-  return data<{ repository: null; branch: null; sources: SourceDocument[] }>(await fetch("/api/ingest", { method: "POST", body: form }));
+  if (paths?.length) form.append("paths", JSON.stringify(paths));
+  return data<{ repository: null; branch: null; sources: SourceDocument[]; warnings?: string[]; ingestionComplete?: boolean }>(await fetch("/api/ingest", { method: "POST", body: form }));
 }
 
 export async function generateWorkflow(sources: SourceDocument[]) {
