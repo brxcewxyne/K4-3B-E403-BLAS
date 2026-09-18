@@ -5,6 +5,7 @@ import { AppError } from "../shared/api";
 import { hashString, logEvent } from "../logging/logger";
 import { labWorkflowSchema } from "../shared/schemas";
 import type { Citation, LabWorkflow, SourceDocument } from "../shared/types";
+import { planWorkflowAttempts } from "./attempts";
 import { prepareWorkflowContext } from "./context";
 import { normalizeWorkflowStep } from "./normalize";
 
@@ -38,11 +39,7 @@ export async function extractWorkflow(sources: SourceDocument[], sessionId?: str
 }`;
   const stableSessionId = createAIRequestSessionId(sessionId);
   const primaryModel = getModelName("workflow");
-  const fallbackModel = getWorkflowFallbackModel() || primaryModel;
-  const attempts = [
-    { mode: "normal" as const, timeoutMs: 23_000, model: primaryModel },
-    { mode: "compact" as const, timeoutMs: 23_000, model: fallbackModel }
-  ];
+  const attempts = planWorkflowAttempts(primaryModel, getWorkflowFallbackModel());
   const generationStartedAt = Date.now();
   const sourceIds = sources.map((source) => source.id);
   const inputCharacters = sources.reduce((sum, source) => sum + source.content.length, 0);
@@ -55,6 +52,7 @@ export async function extractWorkflow(sources: SourceDocument[], sessionId?: str
       sourceCount: sources.length,
       sourceIds,
       characters: inputCharacters,
+      attemptsPlanned: attempts.length,
       currentStepId: null
     }
   });
@@ -62,7 +60,7 @@ export async function extractWorkflow(sources: SourceDocument[], sessionId?: str
   let usedModel = primaryModel;
   let attemptsMade = 0;
 
-  const failGeneration = (errorCode: string): never => {
+  const failGeneration = (error: unknown, errorCode: string): never => {
     logEvent({
       eventType: "workflow_generation_failed",
       sessionId: stableSessionId,
@@ -75,9 +73,11 @@ export async function extractWorkflow(sources: SourceDocument[], sessionId?: str
         attemptsMade
       }
     });
-    if (errorCode === "AI_TIMEOUT") {
+    if (error instanceof AppError && error.code === "AI_TIMEOUT") {
       throw new AppError("AI_TIMEOUT", "Workflow generation took too long. Try again with fewer source files.", 504);
     }
+    // Auth, rate-limit, provider and request errors surface truthfully — never disguised as schema errors.
+    if (error instanceof AppError) throw error;
     throw new AppError("WORKFLOW_SCHEMA_ERROR", "The AI provider returned a workflow that did not match the required schema.", 502);
   };
 
@@ -96,15 +96,22 @@ export async function extractWorkflow(sources: SourceDocument[], sessionId?: str
       );
       break;
     } catch (error) {
-      const retryable = error instanceof AppError && (error.code === "AI_TIMEOUT" || error.code === "AI_PROVIDER_UNAVAILABLE");
-      if (retryable && index === 0) continue;
-      if (error instanceof AppError && error.code === "AI_TIMEOUT") return failGeneration("AI_TIMEOUT");
-      throw error;
+      const errorCode = error instanceof AppError ? error.code : "UNKNOWN";
+      const canRetry = (errorCode === "AI_TIMEOUT" || errorCode === "AI_PROVIDER_UNAVAILABLE") && index < attempts.length - 1;
+      if (canRetry) {
+        logEvent({
+          eventType: "workflow_generation_fallback",
+          sessionId: stableSessionId,
+          data: { fromModel: attempt.model, toModel: attempts[index + 1].model, reason: errorCode, attempt: index + 2 }
+        });
+        continue;
+      }
+      return failGeneration(error, errorCode);
     }
   }
 
   const parsed = labWorkflowSchema.safeParse(result);
-  if (!parsed.success) return failGeneration("WORKFLOW_SCHEMA_ERROR");
+  if (!parsed.success) return failGeneration(parsed.error, "WORKFLOW_SCHEMA_ERROR");
   const sanitize = (citations: Citation[]) => citations.map((citation) => sanitizeCitation(citation, sources)).filter((citation): citation is Citation => Boolean(citation));
   // Defensive title: parsed output first, then repository/source-derived names, generic last. Never invents a lab title.
   const repositoryTitle = sources.map((source) => source.repository).find((repository): repository is string => !!repository)?.replace("https://github.com/", "").trim() || "";
@@ -152,6 +159,7 @@ export async function extractWorkflow(sources: SourceDocument[], sessionId?: str
       checkpointCount: workflow.checkpoints.length,
       conflictCount: workflow.conflicts.length,
       model: usedModel || "not-configured",
+      attempt: attemptsMade,
       attemptsMade,
       durationMs: Date.now() - generationStartedAt
     }
