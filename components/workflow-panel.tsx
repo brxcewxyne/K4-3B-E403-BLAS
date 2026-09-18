@@ -52,8 +52,14 @@ export function WorkflowPanel({ workflow, progress, selectedId, loading, error, 
         {current ? (
           <section className="focus-card" aria-live="polite">
             <span>Current step · {current.order} / {total}</span>
-            <h2>{current.title}</h2>
-            <div><p>{currentDone ? "Completed — revisiting." : current.requiredActions[0] || current.description}</p></div>
+            <h2>Step {current.order} — {current.title}</h2>
+            <div>
+              <h4>What to do</h4>
+              {currentDone ? <p>Completed — revisiting.</p> : null}
+              <ul>{(current.requiredActions.length ? current.requiredActions.slice(0, 3) : [current.description || "The source defines this step but does not provide detailed execution instructions."]).map((action) => <li key={action}>— {action}</li>)}</ul>
+              <h4>How to do it</h4>
+              {current.hints.length ? <ol className="howto-list">{current.hints.slice(0, 3).map((hint) => <li key={hint}>{hint}</li>)}</ol> : <p>The source defines this step but does not provide detailed execution instructions.</p>}
+            </div>
           </section>
         ) : null}
         <div className="workflow-list" role="listbox" aria-label="Workflow steps">
@@ -69,8 +75,8 @@ export function WorkflowPanel({ workflow, progress, selectedId, loading, error, 
                 className={`workflow-row ${done ? "done" : ""} ${active ? "active" : ""} ${selected?.id === step.id ? "inspected" : ""}`}
                 onClick={() => onSelect(step.id)}
               >
-                <span className="step-marker">{done ? <CheckIcon size={12} /> : step.order}</span>
-                <span><small>{active ? "Current" : done ? "Completed" : `Step ${step.order}`}</small><strong>{step.title}</strong></span>
+                <span className="step-marker">{done ? <CheckIcon size={14} /> : step.order}</span>
+                <span><small>{active ? "Current" : done ? "Completed" : `Step ${step.order}`}</small><strong>{step.title}</strong><em className="row-summary">{step.requiredActions[0] || step.description}</em></span>
               </button>
             );
           })}
@@ -78,14 +84,15 @@ export function WorkflowPanel({ workflow, progress, selectedId, loading, error, 
         {selected ? (
           <section className="step-detail">
             <div><span>{selected.id === current?.id ? "Current step" : progress.completedStepIds.includes(selected.id) ? "Completed" : "Step details"}</span><i>{String(selected.order).padStart(2, "0")}</i></div>
-            <h3>{selected.title}</h3>
-            <p>{selected.description}</p>
-            <h4>Required actions</h4>
-            <ul>{selected.requiredActions.map((action) => <li key={action}>— {action}</li>)}</ul>
+            <h3>Step {selected.order} — {selected.title}</h3>
+            {selected.description ? <p>{selected.description}</p> : null}
+            <h4>What to do</h4>
+            {selected.requiredActions.length ? <ul>{selected.requiredActions.map((action) => <li key={action}>— {action}</li>)}</ul> : <p>The source defines this step but does not provide detailed execution instructions.</p>}
+            <h4>How to do it</h4>
+            {selected.hints.length ? <ol className="howto-list">{selected.hints.map((hint) => <li key={hint}>{hint}</li>)}</ol> : <p>The source defines this step but does not provide detailed execution instructions.</p>}
             <h4>Success criteria</h4>
-            <ul className="criteria">{selected.successCriteria.map((item) => <li key={item}><CheckIcon size={12} />{item}</li>)}</ul>
-            {selected.hints?.length ? <><h4>Hints</h4><ul>{selected.hints.map((hint) => <li key={hint}>· {hint}</li>)}</ul></> : null}
-            {selected.sources.length ? <div className="step-sources"><span>Sources</span><p>{selected.sources.map((source) => source.file).join(" · ")}</p></div> : null}
+            {selected.successCriteria.length ? <ul className="criteria">{selected.successCriteria.map((item) => <li key={item}><CheckIcon size={14} />{item}</li>)}</ul> : <p>No explicit success criteria in the sources — confirm with the lab materials before moving on.</p>}
+            {selected.sources.length ? <div className="step-sources"><span>Sources</span><ul>{selected.sources.map((source) => <li key={`${source.sourceId}-${source.section}`}>{source.file}{source.section ? ` · ${source.section}` : ""}</li>)}</ul></div> : null}
             {selected.id !== current?.id ? <button type="button" className="set-current-button" onClick={() => onSetCurrent(selected.id)}>Set as current</button> : null}
           </section>
         ) : null}
@@ -93,8 +100,8 @@ export function WorkflowPanel({ workflow, progress, selectedId, loading, error, 
           <section className="step-detail">
             <div><span>Checkpoints</span></div>
             {workflow.checkpoints.map((checkpoint) => (
-              <div key={checkpoint.title} style={{ marginTop: 8 }}>
-                <h3 style={{ fontSize: 10 }}>{checkpoint.title}</h3>
+              <div key={checkpoint.title} className="checkpoint-block">
+                <h3>{checkpoint.title}</h3>
                 <ul>{checkpoint.requirements.map((req) => <li key={req}>— {req}</li>)}</ul>
               </div>
             ))}
