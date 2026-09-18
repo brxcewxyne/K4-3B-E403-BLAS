@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { buildLocalFallbackWorkflow } from "@/lib/workflow/fallback";
 import {
+  deriveStepGoal,
   extractGoalFromSources,
   humanizeSlugLike,
   isTechnicalIdentifier,
   NEUTRAL_GOAL,
   resolveWorkflowGoal,
-  resolveWorkflowTitle
+  resolveWorkflowTitle,
+  synthesizeGoalFromSources
 } from "@/lib/workflow/goal";
 import type { SourceDocument } from "@/lib/shared/types";
 
@@ -90,6 +92,49 @@ describe("goal extraction", () => {
     expect(extractGoalFromSources(sources)).toContain("Understand prompts");
     expect(resolveWorkflowGoal({ parsedGoal: "Custom valid objective here", sources })).toBe("Custom valid objective here");
     expect(resolveWorkflowGoal({ sources })).not.toBe("");
+  });
+});
+
+describe("grounded goal synthesis", () => {
+  it("synthesizes a Vietnamese objective from H1 topics and setup evidence", () => {
+    const sources = [doc("lab.md", "# Lab 4\n\n## Cài đặt môi trường\n\nCài đặt venv và kiểm tra kết quả.", 0)];
+    const goal = synthesizeGoalFromSources(sources);
+    expect(goal).toMatch(/^Hiểu Lab 4/);
+    expect(goal).toContain("chuẩn bị môi trường");
+    expect(isTechnicalIdentifier(goal)).toBe(false);
+    expect(resolveWorkflowGoal({ sources })).toBe(goal);
+  });
+
+  it("synthesizes an English objective with coverage clause", () => {
+    const sources = [doc("setup.md", "# Environment Setup\n\n## Install\n\nRun the installer.", 0)];
+    const goal = synthesizeGoalFromSources(sources);
+    expect(goal).toMatch(/^Understand Environment Setup/);
+    expect(goal).toContain("environment setup");
+    expect(isTechnicalIdentifier(goal)).toBe(false);
+  });
+
+  it("returns empty without usable topics, letting neutral take over", () => {
+    expect(synthesizeGoalFromSources([doc("notes.md", "Just some unstructured notes.", 0)])).toBe("");
+    expect(resolveWorkflowGoal({ sources: [doc("notes.md", "Just some unstructured notes.", 0)] })).toBe(NEUTRAL_GOAL);
+  });
+
+  it("still prefers explicit goal sections over synthesis", () => {
+    const sources = [doc("README.md", "# Lab\n\n## Goal\nExplicit objective here.", 0)];
+    expect(resolveWorkflowGoal({ sources })).toBe("Explicit objective here.");
+  });
+});
+
+describe("step goal derivation", () => {
+  const base = { title: "Install dependencies", whatToDo: ["Run pip install"], howToDoIt: ["pip install -r requirements.txt"] };
+  it("uses the step goal when meaningful", () => {
+    expect(deriveStepGoal({ ...base, goal: "Prepare the runtime environment." })).toBe("Prepare the runtime environment.");
+  });
+  it("falls back to primary content instead of duplicating the title", () => {
+    expect(deriveStepGoal({ ...base, goal: "Install dependencies" })).toBe("Run pip install");
+    expect(deriveStepGoal({ title: "Run", goal: "", whatToDo: [], howToDoIt: ["python main.py"] })).toBe("python main.py");
+  });
+  it("returns empty when nothing usable exists", () => {
+    expect(deriveStepGoal({ title: "Step", goal: "", whatToDo: [], howToDoIt: [] })).toBe("");
   });
 });
 

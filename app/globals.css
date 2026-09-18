@@ -205,7 +205,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visib
 .workflow-side-meta { flex: 0 0 auto; padding: 20px 26px 0; }
 .workflow-side .workflow-list { display: grid; flex: 0 0 auto; gap: 10px; padding: 14px 16px 6px; }
 .workflow-side .step-detail { margin: 14px 18px 16px; }
-.workflow-side-nav { position: sticky; bottom: 0; flex: 0 0 auto; margin: auto 18px 18px; padding: 14px; border: 1px solid rgba(255, 255, 255, .08); border-radius: 13px; background: rgba(18, 20, 24, .55); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); }
+.workflow-side-nav { position: sticky; bottom: 0; flex: 0 0 auto; margin: auto 18px 18px; padding: 14px; border: 1px solid rgba(255, 255, 255, .1); border-top: 1px solid rgba(255, 255, 255, .16); border-radius: 13px; background: rgba(13, 15, 20, .94); box-shadow: 0 -12px 32px rgba(0, 0, 0, .45); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); }
 
 .goal-card { padding: 2px 0 0; }
 .goal-card .kicker { font-size: 13px; }

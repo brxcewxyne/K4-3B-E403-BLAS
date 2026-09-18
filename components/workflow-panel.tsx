@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { CheckIcon } from "./icons";
 import { groupCitationsBySource } from "@/lib/sources/group-citations";
+import { deriveStepGoal } from "@/lib/workflow/goal";
 import { canMarkComplete, detailHeaderKind, rowLabelText } from "@/lib/workflow/step-view";
 import type { Citation, LabProgress, LabWorkflow } from "@/lib/shared/types";
 
@@ -58,7 +59,12 @@ function stepList(step: LabWorkflow["steps"][number], key: "requirements" | "wha
 }
 
 function stepGoal(step: LabWorkflow["steps"][number]): string {
-  return step.goal || step.description || "";
+  return deriveStepGoal({
+    title: step.title,
+    goal: step.goal || step.description || "",
+    whatToDo: stepList(step, "whatToDo"),
+    howToDoIt: stepList(step, "howToDoIt")
+  });
 }
 
 type Props = {
@@ -145,7 +151,7 @@ export function WorkflowPanel({ workflow, progress, selectedId, loading, error, 
           <section className="step-detail">
             <div><span>Step details · {detailHeaderKind(isCurrentStep, selected.order)}</span><i>{String(selected.order).padStart(2, "0")}</i></div>
             <h3>Step {selected.order} — {selected.title}</h3>
-            {stepGoal(selected) ? <p className="detail-goal">{stepGoal(selected)}</p> : null}
+            {stepGoal(selected) ? (<><h4>Step goal</h4><p className="detail-goal">{stepGoal(selected)}</p></>) : null}
             {stepList(selected, "requirements").length ? (<><h4>Requirements</h4><ul>{stepList(selected, "requirements").map((item) => <li key={item}>— {item}</li>)}</ul></>) : null}
             {stepList(selected, "whatToDo").length ? (<><h4>What to do</h4><ul>{stepList(selected, "whatToDo").map((action) => <li key={action}>— {action}</li>)}</ul></>) : null}
             {stepList(selected, "howToDoIt").length ? (<><h4>How to do it</h4><ol className="howto-list">{stepList(selected, "howToDoIt").map((hint) => <li key={hint}>{hint}</li>)}</ol></>) : null}
