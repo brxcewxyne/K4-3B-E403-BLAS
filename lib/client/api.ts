@@ -1,4 +1,4 @@
-import type { ApiResult, ChatAnswer, ChatTurn, LabWorkflow, SourceDocument } from "../shared/types";
+import type { ApiResult, ChatAnswer, ChatTurn, ChatWorkflowContext, LabProgress, LabWorkflow, SourceDocument } from "../shared/types";
 
 const SESSION_STORAGE_KEY = "ai20k-opencode-session";
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -46,6 +46,6 @@ export async function generateWorkflow(sources: SourceDocument[]) {
   return data<{ workflow: LabWorkflow }>(await fetch("/api/workflow", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sources, sessionId: providerSessionId() }) }));
 }
 
-export async function askLabGuide(input: { question: string; sources: SourceDocument[]; workflow?: LabWorkflow; currentStep?: string; history?: ChatTurn[] }) {
+export async function askLabGuide(input: { question: string; sources: SourceDocument[]; progress?: LabProgress; workflowContext?: ChatWorkflowContext; history?: ChatTurn[] }) {
   return data<ChatAnswer>(await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...input, sessionId: providerSessionId() }) }));
 }

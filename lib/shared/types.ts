@@ -44,6 +44,22 @@ export type LabWorkflow = {
   }>;
 };
 
+export type LabProgress = {
+  currentStepId: string | null;
+  completedStepIds: string[];
+  stepHistory: string[];
+};
+
+export type ChatWorkflowStep = Pick<WorkflowStep, "id" | "order" | "title" | "description" | "requiredActions" | "successCriteria">;
+
+export type ChatWorkflowContext = {
+  goal: string;
+  currentStep?: ChatWorkflowStep;
+  previousStep?: ChatWorkflowStep;
+  nextStep?: ChatWorkflowStep;
+  completedSteps: Array<Pick<WorkflowStep, "id" | "order" | "title">>;
+};
+
 export type ChatAnswer = {
   answer: string;
   citations: Citation[];

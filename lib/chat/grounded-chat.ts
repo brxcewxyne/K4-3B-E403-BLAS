@@ -3,7 +3,7 @@ import { CHAT_SYSTEM_PROMPT } from "../ai/prompts";
 import { chunkSources, excerptFromChunk, rankChunks } from "../sources/chunks";
 import { AppError } from "../shared/api";
 import { chatAnswerSchema } from "../shared/schemas";
-import type { ChatAnswer, ChatTurn, LabWorkflow, SourceDocument } from "../shared/types";
+import type { ChatAnswer, ChatTurn, ChatWorkflowContext, LabProgress, SourceDocument } from "../shared/types";
 
 const CHAT_CHUNK_LIMIT = 5;
 const CHAT_CONTEXT_CHAR_BUDGET = 18_000;
@@ -20,15 +20,25 @@ function selectChatChunks(sources: SourceDocument[], question: string) {
   });
 }
 
-export async function answerGroundedQuestion(input: { question: string; sources: SourceDocument[]; workflow?: LabWorkflow; sessionId?: string; currentStep?: string; history?: ChatTurn[] }): Promise<ChatAnswer> {
+function progressContext(progress?: LabProgress, workflow?: ChatWorkflowContext) {
+  if (!progress || !workflow) return "No generated workflow progress is available. Answer from source chunks only.";
+  const label = (step: ChatWorkflowContext["currentStep"]) => step ? `${step.order}. ${step.title} (${step.id})` : "None";
+  return `Student-saved progress (reported state, not independently verified):
+Current: ${label(workflow.currentStep)}
+Current details: ${workflow.currentStep ? `${workflow.currentStep.description}\nRequired actions: ${workflow.currentStep.requiredActions.join("; ")}\nSuccess criteria: ${workflow.currentStep.successCriteria.join("; ")}` : "None"}
+Completed: ${workflow.completedSteps.map((item) => `${item.order}. ${item.title} (${item.id})`).join("; ") || "None"}
+Previous: ${label(workflow.previousStep)}
+Next: ${label(workflow.nextStep)}
+Goal: ${workflow.goal}`;
+}
+
+export async function answerGroundedQuestion(input: { question: string; sources: SourceDocument[]; workflowContext?: ChatWorkflowContext; progress?: LabProgress; sessionId?: string; history?: ChatTurn[] }): Promise<ChatAnswer> {
   const chunks = selectChatChunks(input.sources, input.question);
   const context = chunks.map((chunk) => `===== CHUNK sourceId=${chunk.sourceId} file=${chunk.file} section=${chunk.section} =====\n${chunk.content}`).join("\n\n");
-  const current = input.workflow?.steps.find((step) => step.id === input.currentStep);
   const prompt = `Return JSON: { "answer": "string", "citations": [{ "sourceId": "provided id", "file": "provided file", "section": "provided heading", "excerpt": "verbatim excerpt" }] }
 
-Current workflow context:
-Goal: ${input.workflow?.goal || "No generated workflow is available; answer directly from the source chunks."}
-Current step: ${current ? `${current.order}. ${current.title} — ${current.description}` : "Not specified"}
+Workflow progress context:
+${progressContext(input.progress, input.workflowContext)}
 
 Recent conversation:
 ${(input.history || []).slice(-8).map((turn) => `${turn.role}: ${turn.content}`).join("\n") || "None"}

@@ -1,6 +1,6 @@
 import { answerGroundedQuestion } from "@/lib/chat/grounded-chat";
 import { failure, success, AppError } from "@/lib/shared/api";
-import { labWorkflowSchema, sourceArraySchema } from "@/lib/shared/schemas";
+import { sourceArraySchema } from "@/lib/shared/schemas";
 import { z } from "zod";
 
 export const runtime = "nodejs";
@@ -9,9 +9,19 @@ export const maxDuration = 60;
 const requestSchema = z.object({
   question: z.string().trim().min(1).max(4000),
   sources: sourceArraySchema,
-  workflow: labWorkflowSchema.optional(),
   sessionId: z.string().uuid().optional(),
-  currentStep: z.string().optional(),
+  progress: z.object({
+    currentStepId: z.string().nullable(),
+    completedStepIds: z.array(z.string()).max(200),
+    stepHistory: z.array(z.string()).max(500)
+  }).optional(),
+  workflowContext: z.object({
+    goal: z.string().max(3000),
+    currentStep: z.object({ id: z.string(), order: z.number(), title: z.string(), description: z.string(), requiredActions: z.array(z.string()), successCriteria: z.array(z.string()) }).optional(),
+    previousStep: z.object({ id: z.string(), order: z.number(), title: z.string(), description: z.string(), requiredActions: z.array(z.string()), successCriteria: z.array(z.string()) }).optional(),
+    nextStep: z.object({ id: z.string(), order: z.number(), title: z.string(), description: z.string(), requiredActions: z.array(z.string()), successCriteria: z.array(z.string()) }).optional(),
+    completedSteps: z.array(z.object({ id: z.string(), order: z.number(), title: z.string() })).max(200)
+  }).optional(),
   history: z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().max(6000) })).max(10).optional()
 });
 

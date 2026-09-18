@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { AddMaterialsModal } from "@/components/add-materials-modal";
+import { BackgroundVideo } from "@/components/background-video";
 import { ChatPanel, type UiMessage } from "@/components/chat-panel";
 import { SourceReader } from "@/components/source-reader";
 import { SourceSidebar } from "@/components/source-sidebar";
@@ -9,21 +10,18 @@ import { Toast } from "@/components/toast";
 import { TopBar } from "@/components/top-bar";
 import { WorkflowPanel } from "@/components/workflow-panel";
 import { askLabGuide, generateWorkflow, ingestFiles, ingestRepository } from "@/lib/client/api";
-import type { Citation, LabWorkflow, SourceDocument } from "@/lib/shared/types";
+import type { Citation, LabProgress, LabWorkflow, SourceDocument } from "@/lib/shared/types";
+import { completeAndAdvance, createChatWorkflowContext, initialProgress, moveToStep, normalizeProgress, progressStorageKey } from "@/lib/workflow/progress";
 
 type Panel = "sources" | "chat" | "workflow";
 type ReaderTarget = { sourceId: string; section?: string; excerpt?: string };
 
-function storageKey(sources: SourceDocument[]) {
-  return `ai20k-progress:${sources.map((source) => source.path).sort().join("|").slice(0, 500)}`;
-}
-
-function readStoredProgress(sources: SourceDocument[]) {
+function readStoredProgress(sources: SourceDocument[], workflow: LabWorkflow, repository?: string) {
   try {
-    const value = JSON.parse(window.localStorage.getItem(storageKey(sources)) || "{}") as { completed?: unknown; sourceId?: unknown };
-    return { completed: Array.isArray(value.completed) ? value.completed.filter((id): id is string => typeof id === "string") : [], sourceId: typeof value.sourceId === "string" ? value.sourceId : "" };
+    const value = JSON.parse(window.localStorage.getItem(progressStorageKey(sources, repository)) || "{}") as Partial<LabProgress>;
+    return normalizeProgress(workflow, value);
   } catch {
-    return { completed: [], sourceId: "" };
+    return initialProgress(workflow);
   }
 }
 
@@ -35,7 +33,7 @@ export default function Home() {
   const [workflowError, setWorkflowError] = useState("");
   const [selectedSourceId, setSelectedSourceId] = useState("");
   const [readerTarget, setReaderTarget] = useState<ReaderTarget | null>(null);
-  const [completed, setCompleted] = useState<string[]>([]);
+  const [progress, setProgress] = useState<LabProgress>({ currentStepId: null, completedStepIds: [], stepHistory: [] });
   const [selectedStepId, setSelectedStepId] = useState("");
   const [messages, setMessages] = useState<UiMessage[]>([]);
   const [thinking, setThinking] = useState(false);
@@ -44,7 +42,7 @@ export default function Home() {
   const [toast, setToast] = useState("");
   const [panel, setPanel] = useState<Panel>("chat");
 
-  const currentStep = useMemo(() => workflow?.steps.find((step) => !completed.includes(step.id)), [workflow, completed]);
+  const currentStep = useMemo(() => workflow?.steps.find((step) => step.id === progress.currentStepId), [workflow, progress.currentStepId]);
   const readerSource = sources.find((source) => source.id === readerTarget?.sourceId);
   const labTitle = workflow?.title || repository?.replace("https://github.com/", "") || sources[0]?.name;
 
@@ -53,21 +51,20 @@ export default function Home() {
     window.setTimeout(() => setToast(""), 2600);
   }
 
-  function persist(nextCompleted: string[], sourceId = selectedSourceId) {
-    if (sources.length) window.localStorage.setItem(storageKey(sources), JSON.stringify({ completed: nextCompleted, sourceId }));
+  function persist(nextProgress: LabProgress, activeSources = sources, activeRepository = repository) {
+    if (activeSources.length) window.localStorage.setItem(progressStorageKey(activeSources, activeRepository), JSON.stringify(nextProgress));
   }
 
-  async function runWorkflow(nextSources: SourceDocument[]) {
+  async function runWorkflow(nextSources: SourceDocument[], nextRepository = repository) {
     setWorkflowLoading(true);
     setWorkflowError("");
     try {
       const result = await generateWorkflow(nextSources);
-      const saved = readStoredProgress(nextSources);
+      const saved = readStoredProgress(nextSources, result.workflow, nextRepository);
       setWorkflow(result.workflow);
-      setCompleted(saved.completed.filter((id) => result.workflow.steps.some((step) => step.id === id)));
-      setSelectedSourceId(saved.sourceId && nextSources.some((source) => source.id === saved.sourceId) ? saved.sourceId : nextSources[0]?.id || "");
-      const first = result.workflow.steps.find((step) => !saved.completed.includes(step.id)) || result.workflow.steps[0];
-      setSelectedStepId(first?.id || "");
+      setProgress(saved);
+      persist(saved, nextSources, nextRepository);
+      setSelectedStepId(saved.currentStepId || "");
       setMessages((current) => current.length ? current : [{ id: "welcome", role: "assistant", content: `I’ve extracted **${result.workflow.steps.length} workflow steps**. Ask what to do next or open the workflow checklist.` }]);
       notify("Workflow ready");
     } catch (error) {
@@ -83,14 +80,14 @@ export default function Home() {
     setSelectedSourceId(nextSources[0]?.id || "");
     setWorkflow(null);
     setWorkflowError("");
-    setCompleted([]);
+    setProgress({ currentStepId: null, completedStepIds: [], stepHistory: [] });
     setSelectedStepId("");
     setMessages([]);
     setChatError("");
     setModalOpen(false);
     setReaderTarget(null);
     notify("Sources ready — chat is available");
-    void runWorkflow(nextSources);
+    void runWorkflow(nextSources, nextRepository);
   }
 
   async function addRepository(url: string) { const result = await ingestRepository(url); await buildWorkspace(result.sources, result.repository); }
@@ -104,7 +101,13 @@ export default function Home() {
     setThinking(true);
     setChatError("");
     try {
-      const answer = await askLabGuide({ question, sources, workflow: workflow || undefined, currentStep: currentStep?.id, history: messages.slice(-8).map((message) => ({ role: message.role, content: message.content })) });
+      const answer = await askLabGuide({
+        question,
+        sources,
+        progress: workflow ? progress : undefined,
+        workflowContext: workflow ? createChatWorkflowContext(workflow, progress) : undefined,
+        history: messages.slice(-8).map((message) => ({ role: message.role, content: message.content }))
+      });
       setMessages((current) => [...current, { id: `assistant-${Date.now()}`, role: "assistant", content: answer.answer, citations: answer.citations }]);
     } catch (error) {
       setChatError(error instanceof Error ? error.message : "Chat request failed.");
@@ -113,7 +116,7 @@ export default function Home() {
     }
   }
 
-  function selectSource(id: string) { setSelectedSourceId(id); persist(completed, id); }
+  function selectSource(id: string) { setSelectedSourceId(id); }
   function openSource(id: string) { selectSource(id); setReaderTarget({ sourceId: id }); }
   function openCitation(citation: Citation) {
     selectSource(citation.sourceId);
@@ -124,23 +127,43 @@ export default function Home() {
 
   function completeCurrent() {
     if (!currentStep || !workflow) return;
-    const next = [...completed, currentStep.id];
-    setCompleted(next);
+    const next = completeAndAdvance(workflow, progress);
+    setProgress(next);
     persist(next);
-    const nextStep = workflow.steps.find((step) => !next.includes(step.id));
-    setSelectedStepId(nextStep?.id || currentStep.id);
+    setSelectedStepId(next.currentStepId || "");
     notify(`Step ${currentStep.order} completed`);
+  }
+
+  function moveCurrent(offset: -1 | 1) {
+    if (!workflow || !currentStep) return;
+    const index = workflow.steps.findIndex((step) => step.id === currentStep.id);
+    const target = workflow.steps[index + offset];
+    if (!target) return;
+    const next = moveToStep(progress, target.id);
+    setProgress(next);
+    persist(next);
+    setSelectedStepId(target.id);
+    notify(`Current step: ${target.title}`);
+  }
+
+  function setCurrentStep(id: string) {
+    if (!workflow?.steps.some((step) => step.id === id)) return;
+    const next = moveToStep(progress, id);
+    setProgress(next);
+    persist(next);
+    setSelectedStepId(id);
+    notify("Current step updated");
   }
 
   return (
     <main className="app-shell">
-      <div className="cinematic-bg" aria-hidden="true"><video autoPlay muted loop playsInline preload="metadata"><source src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260826_124724_bc041163-d651-425f-aea3-2acc1efc2c96.mp4" type="video/mp4" /></video><div /></div>
-      <TopBar title={labTitle} completed={completed.length} total={workflow?.steps.length || 0} />
+      <BackgroundVideo />
+      <TopBar title={labTitle} completed={progress.completedStepIds.length} total={workflow?.steps.length || 0} />
       <nav className="panel-tabs">{(["sources", "chat", "workflow"] as Panel[]).map((item) => <button type="button" key={item} className={panel === item ? "active" : ""} onClick={() => setPanel(item)}>{item === "workflow" ? "Workflow" : item[0].toUpperCase() + item.slice(1)}</button>)}</nav>
       <div className={`workspace active-${panel}`}>
         <SourceSidebar sources={sources} selectedId={selectedSourceId} repository={repository} onSelect={selectSource} onOpen={openSource} onAdd={() => setModalOpen(true)} />
         <ChatPanel messages={messages} thinking={thinking} error={chatError} disabled={!sources.length} onSend={sendMessage} onCitation={openCitation} onAdd={() => setModalOpen(true)} onDismissError={() => setChatError("")} />
-        <WorkflowPanel workflow={workflow} completed={completed} selectedId={selectedStepId} loading={workflowLoading} error={workflowError} hasSources={Boolean(sources.length)} onSelect={setSelectedStepId} onComplete={completeCurrent} onRetry={() => void runWorkflow(sources)} />
+        <WorkflowPanel workflow={workflow} progress={progress} selectedId={selectedStepId} loading={workflowLoading} error={workflowError} hasSources={Boolean(sources.length)} onSelect={setSelectedStepId} onSetCurrent={setCurrentStep} onComplete={completeCurrent} onPrevious={() => moveCurrent(-1)} onNext={() => moveCurrent(1)} onRetry={() => void runWorkflow(sources, repository)} />
       </div>
       {modalOpen ? <AddMaterialsModal onClose={() => setModalOpen(false)} onRepository={addRepository} onFiles={addFiles} onPaste={addPaste} /> : null}
       {readerSource ? <SourceReader source={readerSource} section={readerTarget?.section} excerpt={readerTarget?.excerpt} onClose={() => setReaderTarget(null)} /> : null}
