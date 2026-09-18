@@ -7,14 +7,17 @@ type Mode = "repository" | "upload" | "paste";
 type Props = {
   onClose: () => void;
   onRepository: (url: string) => Promise<void>;
-  onFiles: (files: File[]) => Promise<void>;
+  onFiles: (files: File[], paths?: string[]) => Promise<void>;
   onPaste: (name: string, content: string) => Promise<void>;
 };
+
+type FolderCapableFile = File & { webkitRelativePath?: string };
 
 export function AddMaterialsModal({ onClose, onRepository, onFiles, onPaste }: Props) {
   const [mode, setMode] = useState<Mode>("repository");
   const [url, setUrl] = useState("");
   const [files, setFiles] = useState<File[]>([]);
+  const [folderFiles, setFolderFiles] = useState<FolderCapableFile[]>([]);
   const [name, setName] = useState("notes.md");
   const [content, setContent] = useState("");
   const [busy, setBusy] = useState(false);
@@ -60,8 +63,24 @@ export function AddMaterialsModal({ onClose, onRepository, onFiles, onPaste }: P
           ) : null}
           {mode === "upload" ? (
             <div>
-              <label className="drop-area" htmlFor="files"><UploadIcon size={23} /><strong>{files.length ? `${files.length} file${files.length > 1 ? "s" : ""} selected` : "Choose Markdown files"}</strong><span>.md · .mdx · up to 1 MB each</span><input id="files" type="file" accept=".md,.mdx" multiple onChange={(event) => setFiles(Array.from(event.target.files || []))} disabled={busy} /></label>
-              <div className="modal-actions"><button type="button" className="ghost-button" onClick={onClose}>Cancel</button><button type="button" className="accent-button" disabled={!files.length || busy} onClick={() => void run(() => onFiles(files))}>{busy ? "Processing…" : "Process files"}</button></div>
+              <label className="drop-area" htmlFor="files"><UploadIcon size={23} /><strong>{files.length ? `${files.length} file${files.length > 1 ? "s" : ""} selected` : "Choose Markdown files"}</strong><span>.md · .mdx · up to 1 MB each</span><input id="files" type="file" accept=".md,.mdx" multiple onChange={(event) => { setFiles(Array.from(event.target.files || [])); setFolderFiles([]); }} disabled={busy} /></label>
+              <label className="drop-area" htmlFor="folder"><UploadIcon size={23} /><strong>{folderFiles.length ? `${folderFiles.length} file${folderFiles.length > 1 ? "s" : ""} selected from folder` : "Or choose a folder"}</strong><span>relative paths preserved · .md · .mdx</span><input
+                id="folder"
+                ref={(element) => { if (element) element.setAttribute("webkitdirectory", ""); }}
+                type="file"
+                accept=".md,.mdx"
+                multiple
+                onChange={(event) => {
+                  const picked = Array.from((event.target.files || []) as unknown as FolderCapableFile[]);
+                  setFolderFiles(picked);
+                  setFiles([]);
+                }}
+                disabled={busy}
+              /></label>
+              <div className="modal-actions"><button type="button" className="ghost-button" onClick={onClose}>Cancel</button><button type="button" className="accent-button" disabled={(!files.length && !folderFiles.length) || busy} onClick={() => void run(() => {
+                if (folderFiles.length) return onFiles(folderFiles, folderFiles.map((file) => file.webkitRelativePath || file.name));
+                return onFiles(files);
+              })}>{busy ? "Processing…" : "Process files"}</button></div>
             </div>
           ) : null}
           {mode === "paste" ? (

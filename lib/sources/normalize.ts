@@ -1,4 +1,5 @@
 import { AppError } from "../shared/api";
+import { hashString } from "../logging/redact";
 import type { SourceDocument, SourceType } from "../shared/types";
 
 export const MAX_MARKDOWN_FILES = 50;
@@ -16,10 +17,20 @@ function stableId(path: string, index: number) {
 
 export function normalizeSources(input: Array<{ path: string; content: string; repository?: string }>): SourceDocument[] {
   if (!input.length) throw new AppError("NO_MARKDOWN", "No Markdown or MDX files were found.");
-  if (input.length > MAX_MARKDOWN_FILES) throw new AppError("TOO_MANY_FILES", `A maximum of ${MAX_MARKDOWN_FILES} Markdown files is supported.`);
+  // Collapse exact duplicates (same normalized path and content, e.g. a file
+  // picked twice). Same paths with different content are kept as-is.
+  const seen = new Set<string>();
+  const deduped = input.filter((item) => {
+    const fingerprint = `${item.path.replace(/\\/g, "/").replace(/^\/+/, "").toLowerCase()}::${hashString(item.content)}`;
+    if (seen.has(fingerprint)) return false;
+    seen.add(fingerprint);
+    return true;
+  });
+  if (!deduped.length) throw new AppError("NO_MARKDOWN", "No Markdown or MDX files were found.");
+  if (deduped.length > MAX_MARKDOWN_FILES) throw new AppError("TOO_MANY_FILES", `A maximum of ${MAX_MARKDOWN_FILES} Markdown files is supported.`);
 
   let combined = 0;
-  return input.map((item, index) => {
+  return deduped.map((item, index) => {
     const path = item.path.replace(/\\/g, "/").replace(/^\/+/, "");
     const extension = path.toLowerCase().endsWith(".mdx") ? "mdx" : path.toLowerCase().endsWith(".md") ? "markdown" : null;
     if (!extension) throw new AppError("UNSUPPORTED_FILE", `${path || "File"} must use .md or .mdx.`);

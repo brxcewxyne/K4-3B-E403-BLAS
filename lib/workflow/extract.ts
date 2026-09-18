@@ -82,6 +82,11 @@ export async function extractWorkflow(sources: SourceDocument[], sessionId?: str
   };
 
   const context = prepareWorkflowContext(sources, "normal");
+  const contextSummary = {
+    sourceNames: context.sourceNames,
+    selectedSourceIds: context.selectedSourceIds,
+    setupEvidence: context.setupEvidence
+  };
   let result: unknown;
   try {
     result = await generateJson(
@@ -146,6 +151,9 @@ export async function extractWorkflow(sources: SourceDocument[], sessionId?: str
       conflictCount: workflow.conflicts.length,
       model: primaryModel || "not-configured",
       attempt: 1,
+      sourcesAvailable: sources.length,
+      sourcesRepresentedInContext: contextSummary.selectedSourceIds.length,
+      setupEvidenceSources: contextSummary.setupEvidence,
       durationMs: Date.now() - generationStartedAt
     }
   });
