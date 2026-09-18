@@ -46,6 +46,6 @@ export async function generateWorkflow(sources: SourceDocument[]) {
   return data<{ workflow: LabWorkflow }>(await fetch("/api/workflow", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sources, sessionId: providerSessionId() }) }));
 }
 
-export async function askLabGuide(input: { question: string; sources: SourceDocument[]; workflow: LabWorkflow; currentStep?: string; history?: ChatTurn[] }) {
+export async function askLabGuide(input: { question: string; sources: SourceDocument[]; workflow?: LabWorkflow; currentStep?: string; history?: ChatTurn[] }) {
   return data<ChatAnswer>(await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...input, sessionId: providerSessionId() }) }));
 }

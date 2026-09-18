@@ -20,14 +20,14 @@ function selectChatChunks(sources: SourceDocument[], question: string) {
   });
 }
 
-export async function answerGroundedQuestion(input: { question: string; sources: SourceDocument[]; workflow: LabWorkflow; sessionId?: string; currentStep?: string; history?: ChatTurn[] }): Promise<ChatAnswer> {
+export async function answerGroundedQuestion(input: { question: string; sources: SourceDocument[]; workflow?: LabWorkflow; sessionId?: string; currentStep?: string; history?: ChatTurn[] }): Promise<ChatAnswer> {
   const chunks = selectChatChunks(input.sources, input.question);
   const context = chunks.map((chunk) => `===== CHUNK sourceId=${chunk.sourceId} file=${chunk.file} section=${chunk.section} =====\n${chunk.content}`).join("\n\n");
-  const current = input.workflow.steps.find((step) => step.id === input.currentStep);
+  const current = input.workflow?.steps.find((step) => step.id === input.currentStep);
   const prompt = `Return JSON: { "answer": "string", "citations": [{ "sourceId": "provided id", "file": "provided file", "section": "provided heading", "excerpt": "verbatim excerpt" }] }
 
 Current workflow context:
-Goal: ${input.workflow.goal}
+Goal: ${input.workflow?.goal || "No generated workflow is available; answer directly from the source chunks."}
 Current step: ${current ? `${current.order}. ${current.title} — ${current.description}` : "Not specified"}
 
 Recent conversation:
@@ -39,12 +39,12 @@ ${context}
 Student question:
 ${input.question}`;
   const startedAt = Date.now();
-  console.info("Chat generation", { reasoningEffort: getReasoningEffort(), chunks: chunks.length, characters: prompt.length });
+  console.info("Chat generation", { reasoningEffort: getReasoningEffort("chat"), chunks: chunks.length, characters: prompt.length });
   let result: unknown;
   try {
     result = await generateJson("chat", CHAT_SYSTEM_PROMPT, prompt, input.sessionId);
   } finally {
-    console.info("Chat generation finished", { reasoningEffort: getReasoningEffort(), chunks: chunks.length, characters: prompt.length, durationMs: Date.now() - startedAt });
+    console.info("Chat generation finished", { reasoningEffort: getReasoningEffort("chat"), chunks: chunks.length, characters: prompt.length, durationMs: Date.now() - startedAt });
   }
   const parsed = chatAnswerSchema.safeParse(result);
   if (!parsed.success) throw new AppError("CHAT_SCHEMA_ERROR", "The AI provider returned an invalid chat response.", 502);

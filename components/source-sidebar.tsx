@@ -61,7 +61,7 @@ export function SourceSidebar({ sources, selectedId, repository, onSelect, onOpe
   }
 
   return (
-    <aside className="glass-panel source-panel">
+    <aside className="floating-panel source-panel">
       <header className="panel-head"><span className="kicker">Materials</span><h1>Sources</h1><p>{repository ? repository.replace("https://github.com/", "") : "Uploaded Markdown"}</p><span className="ready-line"><i />{sources.length} indexed</span></header>
       <div className="source-list" data-lenis-prevent>
         {sources.length ? sources.map((source) => (

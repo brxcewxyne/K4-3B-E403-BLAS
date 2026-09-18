@@ -13,21 +13,31 @@ const REQUEST_TIMEOUT_MS = 55_000;
 type GenerationOptions = {
   timeoutMs?: number;
   requestLabel?: string;
+  model?: string;
 };
 
 function modelEnvironmentName(kind: ModelKind) {
-  return kind === "chat" ? "AI_CHAT_MODEL" : "AI_SUMMARIZE_MODEL";
+  return kind === "chat" ? "AI_CHAT_MODEL" : "AI_WORKFLOW_MODEL";
 }
 
-export function getReasoningEffort(): ReasoningEffort {
-  const configured = process.env.AI_REASONING_EFFORT?.toLowerCase();
-  return configured === "low" || configured === "high" || configured === "medium" ? configured : "medium";
+export function getReasoningEffort(kind: ModelKind): ReasoningEffort {
+  const environmentName = kind === "chat" ? "AI_CHAT_REASONING_EFFORT" : "AI_WORKFLOW_REASONING_EFFORT";
+  const configured = (process.env[environmentName] || process.env.AI_REASONING_EFFORT)?.toLowerCase();
+  return configured === "low" || configured === "high" || configured === "medium" ? configured : "low";
 }
 
-function providerConfig(kind: ModelKind) {
+export function getModelName(kind: ModelKind) {
+  return kind === "chat" ? process.env.AI_CHAT_MODEL : process.env.AI_WORKFLOW_MODEL || process.env.AI_SUMMARIZE_MODEL;
+}
+
+export function getWorkflowFallbackModel() {
+  return process.env.AI_WORKFLOW_FALLBACK_MODEL?.trim() || null;
+}
+
+function providerConfig(kind: ModelKind, modelOverride?: string) {
   const apiKey = process.env.AI_API_KEY;
   const environmentName = modelEnvironmentName(kind);
-  const model = process.env[environmentName];
+  const model = modelOverride || getModelName(kind);
 
   if (!apiKey) {
     throw new AppError("AI_NOT_CONFIGURED", "AI_API_KEY is not configured on the server.", 503);
@@ -39,7 +49,7 @@ function providerConfig(kind: ModelKind) {
   return {
     apiKey,
     model,
-    reasoningEffort: getReasoningEffort(),
+    reasoningEffort: getReasoningEffort(kind),
     baseUrl: (process.env.AI_BASE_URL || DEFAULT_BASE_URL).replace(/\/+$/, "")
   };
 }
@@ -48,7 +58,7 @@ export function getAIProviderStatus() {
   return {
     aiProvider: PROVIDER_NAME,
     model: process.env.AI_CHAT_MODEL || null,
-    configured: Boolean(process.env.AI_API_KEY && process.env.AI_CHAT_MODEL && process.env.AI_SUMMARIZE_MODEL),
+    configured: Boolean(process.env.AI_API_KEY && process.env.AI_CHAT_MODEL && getModelName("workflow")),
     endpoint: "responses"
   } as const;
 }
@@ -113,7 +123,7 @@ export function createAIRequestSessionId(sessionId?: string) {
 }
 
 async function requestResponsesAPI(kind: ModelKind, system: string, user: string, sessionId?: string, options: GenerationOptions = {}) {
-  const { apiKey, model, reasoningEffort, baseUrl } = providerConfig(kind);
+  const { apiKey, model, reasoningEffort, baseUrl } = providerConfig(kind, options.model);
   const stableSessionId = createAIRequestSessionId(sessionId);
   const timeoutMs = options.timeoutMs || REQUEST_TIMEOUT_MS;
   const startedAt = Date.now();
