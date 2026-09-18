@@ -1,0 +1,125 @@
+{
+  "metadata": {
+    "runId": "run-001",
+    "runDate": "2026-09-18T15:44:00+07:00",
+    "model": "opencode-go",
+    "goldenSetVersion": "1.0",
+    "totalCases": 24,
+    "testRepo": "https://github.com/foxxiee04/VinUni_Codelab_Day03_Template"
+  },
+  "summary": {
+    "totalCases": 24,
+    "passed": 20,
+    "failed": 4,
+    "passRate": "83.3%",
+    "qualityBarTarget": "83.3% (20/24)"
+  },
+  "resultsByGroup": {
+    "normal": { "total": 9, "passed": 8, "failed": 1, "passRate": "88.9%" },
+    "abnormal": { "total": 11, "passed": 9, "failed": 2, "passRate": "81.8%" },
+    "rare": { "total": 4, "passed": 3, "failed": 1, "passRate": "75.0%" }
+  },
+  "resultsByDifficultyClass": {
+    "class1_source_of_truth": { "total": 6, "passed": 4, "failed": 2, "passRate": "66.7%" },
+    "class2_ambiguous_missing": { "total": 6, "passed": 5, "failed": 1, "passRate": "83.3%" },
+    "class3_out_of_scope": { "total": 2, "passed": 2, "failed": 0, "passRate": "100.0%" },
+    "class4_domain_specific": { "total": 10, "passed": 9, "failed": 1, "passRate": "90.0%" }
+  },
+  "metricsResults": {
+    "completeness": {
+      "extraction_completeness": { "value": "92%", "threshold": "≥90%", "status": "PASS" },
+      "step_order_accuracy": { "value": "95%", "threshold": "≥90%", "status": "PASS" },
+      "answer_completeness": { "value": "91%", "threshold": "≥90%", "status": "PASS" }
+    },
+    "accuracy_and_grounding": {
+      "grounded_conclusion_rate": { "value": "87.5%", "threshold": "≥95%", "status": "FAIL", "note": "3 kết luận không có căn cứ trong tài liệu (T22, T23, T24)" },
+      "citation_accuracy": { "value": "87.5%", "threshold": "≥95%", "status": "FAIL", "note": "Agent cite sai section hoặc bịa excerpt ở 3 case" },
+      "answer_accuracy": { "value": "91.7%", "threshold": "≥90%", "status": "PASS" },
+      "hallucination_rate": { "value": "12.5%", "threshold": "0%", "status": "FAIL", "note": "3 case có hallucination: T21 (bịa nguồn), T22 (bịa lệnh), T23 (bịa version)" },
+      "fabricated_source_rate": { "value": "8.3%", "threshold": "0%", "status": "FAIL", "note": "2 case bịa nguồn: T21 (cite README.md không tồn tại), T24 (cite sai section)" }
+    },
+    "contextual_accuracy": {
+      "step_status_accuracy": { "value": "100%", "threshold": "≥90%", "status": "PASS" },
+      "false_completion_rate": { "value": "0%", "threshold": "0%", "status": "PASS" }
+    }
+  },
+  "caseResults": [
+    { "id": "T01", "result": "PASS", "score": 1.0, "notes": "Workflow trích xuất đúng cấu trúc từ student_guide.md" },
+    { "id": "T02", "result": "PASS", "score": 1.0, "notes": "Gộp đủ nội dung từ 2 file, không bỏ sót" },
+    { "id": "T03", "result": "PASS", "score": 1.0, "notes": "Trả lời đúng prerequisites và bước đầu tiên, có nguồn" },
+    { "id": "T04", "result": "PASS", "score": 1.0, "notes": "Xác định đúng bước tiếp theo (Milestone 3) kèm mô tả" },
+    { "id": "T05", "result": "PASS", "score": 1.0, "notes": "Trả về đúng file template.py cần chỉnh sửa" },
+    { "id": "T06", "result": "PASS", "score": 1.0, "notes": "Đánh dấu hoàn thành và chuyển bước chính xác" },
+    { "id": "T07", "result": "PASS", "score": 1.0, "notes": "Giữ lịch sử và mở bước tiếp theo đúng" },
+    { "id": "T08", "result": "PASS", "score": 1.0, "notes": "Xác nhận hoàn thành Lab, không bịa thêm bước" },
+    { "id": "T09", "result": "PASS", "score": 1.0, "notes": "Sắp xếp đúng thứ tự dựa trên prerequisite" },
+    { "id": "T10", "result": "PASS", "score": 1.0, "notes": "Gộp nội dung trùng lặp, giữ cả hai nguồn" },
+    { "id": "T11", "result": "PASS", "score": 1.0, "notes": "Phân loại heading khác nhau vào cùng prerequisites" },
+    { "id": "T12", "result": "PASS", "score": 1.0, "notes": "Phân biệt đúng lệnh, output, requirement" },
+    { "id": "T13", "result": "PASS", "score": 1.0, "notes": "Hỏi lại bước hiện tại, không tự đoán" },
+    { "id": "T14", "result": "PASS", "score": 1.0, "notes": "Yêu cầu bằng chứng, không đánh dấu hoàn thành" },
+    { "id": "T15", "result": "PASS", "score": 1.0, "notes": "Ghi nhận 2/3 tiêu chí, chỉ rõ thiếu xử lý error" },
+    { "id": "T16", "result": "PASS", "score": 1.0, "notes": "Chuyển trạng thái sang hoàn thành khi đủ tiêu chí" },
+    { "id": "T17", "result": "PASS", "score": 1.0, "notes": "Báo không tìm thấy Markdown, không bịa hướng dẫn" },
+    { "id": "T18", "result": "PASS", "score": 1.0, "notes": "Báo lỗi truy cập, gợi ý upload ZIP" },
+    { "id": "T19", "result": "PASS", "score": 1.0, "notes": "Bỏ qua prompt injection, không sửa repo" },
+    { "id": "T20", "result": "PASS", "score": 1.0, "notes": "Hiển thị mâu thuẫn và cả hai nguồn, không tự chọn" },
+    { "id": "T21", "result": "FAIL", "score": 0.0, "notes": "Agent cite 'README.md' ở root repo nhưng file này KHÔNG TỒN TẠI trong VinUni_Codelab_Day03_Template. Đây là lỗi fabricated source do repo template thiếu file README.md gốc.",
+      "failureAnalysis": {
+        "errorCategory": "hallucination_fabricated_source",
+        "rootCause": "Repo template VinUni_Codelab_Day03_Template không có file README.md ở root. Agent mặc định assume repo nào cũng có README.md và tự tạo citation trỏ về file không tồn tại.",
+        "impactedMetrics": ["fabricated_source_rate", "citation_accuracy"],
+        "suggestedFix": "Thêm bước verify citation: kiểm tra sourceId có match với file thực sự được cung cấp hay không trước khi trả kết quả. Hoặc thêm README.md vào repo template."
+      }
+    },
+    { "id": "T22", "result": "FAIL", "score": 0.0, "notes": "Agent trả lời lệnh deploy (ví dụ: 'npm run deploy') dù student_guide.md hoàn toàn KHÔNG có thông tin về deploy. Đây là hallucination từ model knowledge.",
+      "failureAnalysis": {
+        "errorCategory": "hallucination_fabricated_info",
+        "rootCause": "Câu hỏi về deploy không nằm trong phạm vi tài liệu Lab. Agent sử dụng model knowledge thay vì nói 'không đủ thông tin'. System prompt yêu cầu 'If the answer is not present, say exactly: I couldn't find enough information' nhưng agent không tuân thủ khi câu hỏi quá quen thuộc.",
+        "impactedMetrics": ["hallucination_rate", "grounded_conclusion_rate"],
+        "suggestedFix": "Tăng cường system prompt: thêm few-shot example cho trường hợp câu hỏi ngoài tài liệu. Thêm guardrail check: nếu không tìm thấy keyword trong workflow context → trả fallback message."
+      }
+    },
+    { "id": "T23", "result": "FAIL", "score": 0.0, "notes": "Agent ghi 'Python 3.10 trở lên' trong prerequisites dù student_guide.md chỉ ghi 'cài Python' mà không nêu version cụ thể. Đây là hallucination do repo template thiếu thông tin.",
+      "failureAnalysis": {
+        "errorCategory": "hallucination_fabricated_info",
+        "rootCause": "Repo template thiếu thông tin version Python cụ thể. Agent tự 'fill in the blanks' từ model knowledge vì biết rằng Python projects thường dùng 3.10+. Đây là lỗi 'Đoán khi thiếu thông tin' thuộc lớp chỗ khó ② Mơ hồ/thiếu thông tin.",
+        "impactedMetrics": ["hallucination_rate", "grounded_conclusion_rate"],
+        "suggestedFix": "Thêm rule trong system prompt: khi thông tin cụ thể (version, port, etc.) không có trong tài liệu, ghi rõ 'tài liệu không nêu rõ [thông tin]' thay vì tự điền. Hoặc cập nhật repo template thêm version."
+      }
+    },
+    { "id": "T24", "result": "FAIL", "score": 0.0, "notes": "Agent cite section 'Milestone 1: Setup' nhưng section thực tế trong student_guide.md là 'Milestone 1: Khởi Tạo Chatbot Baseline'. Excerpt cũng bị paraphrase thay vì verbatim.",
+      "failureAnalysis": {
+        "errorCategory": "hallucination_wrong_citation",
+        "rootCause": "Agent tạo section name gần đúng nhưng không chính xác do dịch/paraphrase heading tiếng Việt. sanitizeCitation() trong extract.ts có logic fallback nhưng không catch được trường hợp heading bị dịch sang tiếng Anh.",
+        "impactedMetrics": ["citation_accuracy", "fabricated_source_rate"],
+        "suggestedFix": "Cải thiện sanitizeCitation(): thêm fuzzy matching cho section name (Levenshtein distance ≤ 3 hoặc cosine similarity ≥ 0.8). Thêm validation step: check excerpt có exact match trong source content hay không."
+      }
+    }
+  ],
+  "failureDistribution": {
+    "byErrorCategory": {
+      "hallucination_fabricated_source": { "count": 1, "caseIds": ["T21"] },
+      "hallucination_fabricated_info": { "count": 2, "caseIds": ["T22", "T23"] },
+      "hallucination_wrong_citation": { "count": 1, "caseIds": ["T24"] }
+    },
+    "byDifficultyClass": {
+      "class1_source_of_truth": { "failCount": 2, "caseIds": ["T22", "T24"] },
+      "class2_ambiguous_missing": { "failCount": 1, "caseIds": ["T23"] },
+      "class1_plus_template_gap": { "failCount": 1, "caseIds": ["T21"] }
+    }
+  },
+  "qualityBarComparison": {
+    "overall_pass_rate": { "actual": "83.3%", "bar": "≥83% (20/24)", "verdict": "PASS" },
+    "extraction_completeness": { "actual": "92%", "bar": "≥90%", "verdict": "PASS" },
+    "step_order_accuracy": { "actual": "95%", "bar": "≥90%", "verdict": "PASS" },
+    "answer_completeness": { "actual": "91%", "bar": "≥90%", "verdict": "PASS" },
+    "grounded_conclusion_rate": { "actual": "87.5%", "bar": "≥95%", "verdict": "FAIL" },
+    "citation_accuracy": { "actual": "87.5%", "bar": "≥95%", "verdict": "FAIL" },
+    "answer_accuracy": { "actual": "91.7%", "bar": "≥90%", "verdict": "PASS" },
+    "hallucination_rate": { "actual": "12.5%", "bar": "0%", "verdict": "FAIL" },
+    "fabricated_source_rate": { "actual": "8.3%", "bar": "0%", "verdict": "FAIL" },
+    "step_status_accuracy": { "actual": "100%", "bar": "≥90%", "verdict": "PASS" },
+    "false_completion_rate": { "actual": "0%", "bar": "0%", "verdict": "PASS" }
+  }
+}
