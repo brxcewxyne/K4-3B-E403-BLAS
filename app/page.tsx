@@ -13,7 +13,7 @@ import { askLabGuide, generateWorkflow, ingestFiles, ingestRepository } from "@/
 import type { Citation, LabProgress, LabWorkflow, SourceDocument } from "@/lib/shared/types";
 import { completeAndAdvance, createChatWorkflowContext, initialProgress, moveToStep, normalizeProgress, progressStorageKey } from "@/lib/workflow/progress";
 
-type Panel = "sources" | "chat" | "workflow";
+type Panel = "sources" | "chat";
 type ReaderTarget = { sourceId: string; section?: string; excerpt?: string };
 
 function readStoredProgress(sources: SourceDocument[], workflow: LabWorkflow, repository?: string) {
@@ -41,6 +41,7 @@ export default function Home() {
   const [modalOpen, setModalOpen] = useState(false);
   const [toast, setToast] = useState("");
   const [panel, setPanel] = useState<Panel>("chat");
+  const [workflowOpen, setWorkflowOpen] = useState(false);
 
   const currentStep = useMemo(() => workflow?.steps.find((step) => step.id === progress.currentStepId), [workflow, progress.currentStepId]);
   const readerSource = sources.find((source) => source.id === readerTarget?.sourceId);
@@ -156,15 +157,15 @@ export default function Home() {
   }
 
   return (
-    <main className="app-shell">
+    <main className={`app-shell ${workflowOpen ? "has-workflow-open" : ""}`}>
       <BackgroundVideo />
       <TopBar title={labTitle} completed={progress.completedStepIds.length} total={workflow?.steps.length || 0} />
-      <nav className="panel-tabs">{(["sources", "chat", "workflow"] as Panel[]).map((item) => <button type="button" key={item} className={panel === item ? "active" : ""} onClick={() => setPanel(item)}>{item === "workflow" ? "Workflow" : item[0].toUpperCase() + item.slice(1)}</button>)}</nav>
+      <nav className="panel-tabs" aria-label="Workspace panels">{(["sources", "chat"] as Panel[]).map((item) => <button type="button" key={item} className={panel === item ? "active" : ""} onClick={() => setPanel(item)}>{item[0].toUpperCase() + item.slice(1)}</button>)}</nav>
       <div className={`workspace active-${panel}`}>
         <SourceSidebar sources={sources} selectedId={selectedSourceId} repository={repository} onSelect={selectSource} onOpen={openSource} onAdd={() => setModalOpen(true)} />
         <ChatPanel messages={messages} thinking={thinking} error={chatError} disabled={!sources.length} onSend={sendMessage} onCitation={openCitation} onAdd={() => setModalOpen(true)} onDismissError={() => setChatError("")} />
-        <WorkflowPanel workflow={workflow} progress={progress} selectedId={selectedStepId} loading={workflowLoading} error={workflowError} hasSources={Boolean(sources.length)} onSelect={setSelectedStepId} onSetCurrent={setCurrentStep} onComplete={completeCurrent} onPrevious={() => moveCurrent(-1)} onNext={() => moveCurrent(1)} onRetry={() => void runWorkflow(sources, repository)} />
       </div>
+      <WorkflowPanel workflow={workflow} progress={progress} selectedId={selectedStepId} loading={workflowLoading} error={workflowError} hasSources={Boolean(sources.length)} open={workflowOpen} onOpenChange={setWorkflowOpen} onSelect={setSelectedStepId} onSetCurrent={setCurrentStep} onComplete={completeCurrent} onPrevious={() => moveCurrent(-1)} onNext={() => moveCurrent(1)} onRetry={() => void runWorkflow(sources, repository)} />
       {modalOpen ? <AddMaterialsModal onClose={() => setModalOpen(false)} onRepository={addRepository} onFiles={addFiles} onPaste={addPaste} /> : null}
       {readerSource ? <SourceReader source={readerSource} section={readerTarget?.section} excerpt={readerTarget?.excerpt} onClose={() => setReaderTarget(null)} /> : null}
       <Toast message={toast} />
