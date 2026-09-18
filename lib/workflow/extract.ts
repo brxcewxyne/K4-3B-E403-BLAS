@@ -98,13 +98,13 @@ export async function extractWorkflow(sources: SourceDocument[], sessionId?: str
     } catch (error) {
       const retryable = error instanceof AppError && (error.code === "AI_TIMEOUT" || error.code === "AI_PROVIDER_UNAVAILABLE");
       if (retryable && index === 0) continue;
-      if (error instanceof AppError && error.code === "AI_TIMEOUT") failGeneration("AI_TIMEOUT");
+      if (error instanceof AppError && error.code === "AI_TIMEOUT") return failGeneration("AI_TIMEOUT");
       throw error;
     }
   }
 
   const parsed = labWorkflowSchema.safeParse(result);
-  if (!parsed.success) failGeneration("WORKFLOW_SCHEMA_ERROR");
+  if (!parsed.success) return failGeneration("WORKFLOW_SCHEMA_ERROR");
   const sanitize = (citations: Citation[]) => citations.map((citation) => sanitizeCitation(citation, sources)).filter((citation): citation is Citation => Boolean(citation));
   // Defensive title: parsed output first, then repository/source-derived names, generic last. Never invents a lab title.
   const repositoryTitle = sources.map((source) => source.repository).find((repository): repository is string => !!repository)?.replace("https://github.com/", "").trim() || "";
