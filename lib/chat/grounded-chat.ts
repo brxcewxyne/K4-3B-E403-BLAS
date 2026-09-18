@@ -1,4 +1,4 @@
-import { generateJson, getModelName, getReasoningEffort } from "../ai/client";
+import { generateJson, getModelName } from "../ai/client";
 import { CHAT_SYSTEM_PROMPT } from "../ai/prompts";
 import { chunkSources, excerptFromChunk, rankChunks } from "../sources/chunks";
 import { AppError } from "../shared/api";

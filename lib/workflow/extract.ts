@@ -106,11 +106,27 @@ export async function extractWorkflow(sources: SourceDocument[], sessionId?: str
   const parsed = labWorkflowSchema.safeParse(result);
   if (!parsed.success) failGeneration("WORKFLOW_SCHEMA_ERROR");
   const sanitize = (citations: Citation[]) => citations.map((citation) => sanitizeCitation(citation, sources)).filter((citation): citation is Citation => Boolean(citation));
+  // Defensive title: parsed output first, then repository/source-derived names, generic last. Never invents a lab title.
+  const repositoryTitle = sources.map((source) => source.repository).find((repository): repository is string => !!repository)?.replace("https://github.com/", "").trim() || "";
+  const sourceTitle = (sources[0]?.name || "").replace(/\.(md|mdx)$/i, "").trim();
+  const title = parsed.data.title?.trim() || repositoryTitle || sourceTitle || "Lab Workflow";
   const workflow: LabWorkflow = {
-    ...parsed.data,
-    steps: [...parsed.data.steps].sort((a, b) => a.order - b.order).map((step, index) => ({ ...normalizeWorkflowStep(step, index), order: index + 1, sources: sanitize(step.sources) })),
-    checkpoints: parsed.data.checkpoints.map((checkpoint) => ({ ...checkpoint, sources: sanitize(checkpoint.sources) })),
-    conflicts: parsed.data.conflicts.map((conflict) => ({ ...conflict, sources: sanitize(conflict.sources) }))
+    title,
+    goal: parsed.data.goal ?? "",
+    prerequisites: parsed.data.prerequisites ?? [],
+    steps: [...(parsed.data.steps ?? [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).map((step, index) => {
+      const normalized = normalizeWorkflowStep(step, index);
+      return { ...normalized, order: index + 1, sources: sanitize(normalized.sources) };
+    }),
+    checkpoints: (parsed.data.checkpoints ?? []).map((checkpoint) => ({
+      title: checkpoint.title ?? "Checkpoint",
+      requirements: checkpoint.requirements ?? [],
+      sources: sanitize(checkpoint.sources ?? [])
+    })),
+    conflicts: (parsed.data.conflicts ?? []).map((conflict) => ({
+      description: conflict.description ?? "",
+      sources: sanitize(conflict.sources ?? [])
+    }))
   };
   logEvent({
     eventType: "workflow_generation_completed",
