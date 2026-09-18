@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { CheckIcon } from "./icons";
+import { WorkflowTrigger } from "./workflow-trigger";
 import { groupCitationsBySource } from "@/lib/sources/group-citations";
 import { deriveStepGoal } from "@/lib/workflow/goal";
 import { canMarkComplete, detailHeaderKind, rowLabelText } from "@/lib/workflow/step-view";
@@ -210,20 +211,8 @@ export function WorkflowPanel({ workflow, progress, selectedId, loading, error, 
 
   return (
     <div className={`workflow-col ${open ? "is-open" : ""}`}>
-      {!open ? (
-        <button
-          type="button"
-          className="workflow-trigger"
-          aria-expanded={false}
-          aria-controls="workflow-side-panel"
-          onClick={() => onOpenChange(true)}
-        >
-          <span className="workflow-trigger-dot" aria-hidden="true" />
-          Workflow
-          {total ? <em>{completed}/{total}</em> : null}
-          <span aria-hidden="true">→</span>
-        </button>
-      ) : (
+      <WorkflowTrigger open={open} completed={completed} total={total} onOpen={() => onOpenChange(true)} />
+      {open ? (
         <aside
           id="workflow-side-panel"
           className="workflow-side glass-panel open"
@@ -237,7 +226,7 @@ export function WorkflowPanel({ workflow, progress, selectedId, loading, error, 
           </header>
           {body()}
         </aside>
-      )}
+      ) : null}
     </div>
   );
 }
