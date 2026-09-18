@@ -101,7 +101,7 @@ export function WorkflowPanel({ workflow, progress, selectedId, loading, error, 
 
   function body() {
     if (loading) return <div className="workflow-side-body"><div className="workflow-status"><div className="state-spinner" /><div><span>Workflow</span><strong>Generating checklist…</strong><p>Chat is ready while this runs.</p></div></div></div>;
-    if (error) return <div className="workflow-side-body"><div className="workflow-status workflow-unavailable"><div><span>Workflow unavailable</span><strong>{/timed out|too long/i.test(error) ? "Generation timed out." : "Generation failed."}</strong><p>{error}</p><button type="button" className="set-current-button" onClick={onRetry}>Retry</button></div></div></div>;
+    if (error) return <div className="workflow-side-body"><div className="workflow-status workflow-unavailable"><div className="workflow-error-mark" aria-hidden="true">!</div><div><span>Workflow unavailable</span><strong>{/timed out|too long|time budget/i.test(error) ? "Generation timed out." : "Generation failed."}</strong><p>{error}</p><button type="button" className="set-current-button" onClick={onRetry}>Retry</button></div></div></div>;
     if (!workflow) return <div className="workflow-side-body"><div className="centered-state"><span className="kicker">Workflow</span><strong>{hasSources ? "Preparing checklist…" : "Add materials to begin"}</strong><p>{hasSources ? "Sources are indexed — the checklist appears here once generation finishes." : "Ingest a repository or Markdown files and the checklist appears here."}</p></div></div>;
 
     const pct = total ? Math.round((completed / total) * 100) : 0;

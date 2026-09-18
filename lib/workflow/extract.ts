@@ -71,7 +71,9 @@ export async function extractWorkflow(sources: SourceDocument[], sessionId?: str
         attempt: 1
       }
     });
-    if (error instanceof AppError && error.code === "AI_TIMEOUT") {
+    if (error instanceof AppError && (error.code === "AI_TIMEOUT" || error.code === "AI_APPLICATION_TIMEOUT")) {
+      // Application aborts keep their precise code/message; legacy timeouts keep the established message.
+      if (error.code === "AI_APPLICATION_TIMEOUT") throw error;
       throw new AppError("AI_TIMEOUT", "Workflow generation took too long. Try again with fewer source files.", 504);
     }
     if (errorCode === "WORKFLOW_PARSE_ERROR") {
@@ -88,14 +90,19 @@ export async function extractWorkflow(sources: SourceDocument[], sessionId?: str
     selectedSourceIds: context.selectedSourceIds,
     setupEvidence: context.setupEvidence
   };
+  const promptCharacters = schema.length + context.characters + 64;
   logEvent({
     eventType: "workflow_context_ready",
     sessionId: stableSessionId,
     data: {
+      sourceCount: sources.length,
+      chunkCount: context.chunks,
+      rawCharacters: inputCharacters,
+      selectedCharacters: context.characters,
+      promptCharacters,
+      approximateTokens: Math.round(promptCharacters / 4),
       sourcesAvailable: sources.length,
       sourcesRepresentedInContext: contextSummary.selectedSourceIds.length,
-      characters: context.characters,
-      chunks: context.chunks,
       durationMs: Date.now() - generationStartedAt
     }
   });

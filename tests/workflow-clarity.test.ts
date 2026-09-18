@@ -86,6 +86,7 @@ describe("workflow error taxonomy", () => {
     expect(mapWorkflowErrorCode(new AppError("AI_TIMEOUT", "slow", 504))).toBe("AI_TIMEOUT");
     expect(mapWorkflowErrorCode(new AppError("AI_MALFORMED_RESPONSE", "bad json", 502))).toBe("WORKFLOW_PARSE_ERROR");
     expect(mapWorkflowErrorCode(new AppError("AI_AUTH_ERROR", "denied", 503))).toBe("AI_AUTH_ERROR");
+    expect(mapWorkflowErrorCode(new AppError("AI_APPLICATION_TIMEOUT", "aborted", 504))).toBe("AI_APPLICATION_TIMEOUT");
     expect(mapWorkflowErrorCode(new Error("boom"))).toBe("UNKNOWN");
   });
 });

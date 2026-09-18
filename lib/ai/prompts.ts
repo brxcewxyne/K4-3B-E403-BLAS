@@ -1,6 +1,6 @@
 export const WORKFLOW_SYSTEM_PROMPT = `Synthesize ONE coherent, self-sufficient lab workflow from ALL supplied Markdown chunks.
 - Return only valid JSON matching the requested schema.
-- Read across every file: combine each step's goal (from overviews), commands and values (from setup/run docs), completion checks (from checkpoint docs), and failure cases (from error docs) into a single complete instruction per step.
+- Read across every file: combine each step's goal (from overviews), commands and values (from setup/run docs), completion checks (from checkpoint docs), and failure cases (from error docs) into a single complete instruction per step. A SOURCE INDEX lists every ingested file with its headings; detailed excerpts follow for the most relevant sections — use the index to cover all files when ordering steps.
 - Each step must stand alone: extract the actual instructions into whatToDo/howToDoIt. NEVER write "see README.md for details" or "check setup.md" — the user completes the lab by following the workflow, opening sources only to verify.
 - Merge duplicate requirements across files: show each requirement ONCE per step.
 - Order steps defensibly: explicit numbering first, then prerequisite relationships, then checkpoint dependencies, and logical inference only when necessary.

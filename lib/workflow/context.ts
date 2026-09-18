@@ -2,8 +2,17 @@ import { chunkSources, type SourceChunk } from "../sources/chunks";
 import { hashString } from "../logging/redact";
 import type { SourceDocument } from "../shared/types";
 
-export const WORKFLOW_CONTEXT_CHAR_BUDGET = 56_000;
+export const WORKFLOW_CONTEXT_CHAR_BUDGET = 24_000;
 export const WORKFLOW_RETRY_CHAR_BUDGET = 24_000;
+export const WORKFLOW_CONTEXT_MIN_BUDGET = 4_000;
+
+/** Hard cap for the workflow payload; configurable, never unbounded. Defaults to 24k chars. */
+export function resolveWorkflowContextBudget(mode: ContextMode = "normal"): number {
+  if (mode !== "normal") return WORKFLOW_RETRY_CHAR_BUDGET;
+  const configured = Number.parseInt(process.env.AI_WORKFLOW_CONTEXT_MAX_CHARS || "", 10);
+  if (Number.isFinite(configured) && configured >= WORKFLOW_CONTEXT_MIN_BUDGET) return configured;
+  return WORKFLOW_CONTEXT_CHAR_BUDGET;
+}
 
 const PRIORITY_TERMS = [
   "readme",
@@ -25,7 +34,15 @@ const PRIORITY_TERMS = [
   "evaluation",
   "objective",
   "deliverable",
-  "usage"
+  "usage",
+  "task",
+  "step",
+  "submission",
+  "done",
+  "success",
+  "getting started",
+  "venv",
+  "run"
 ];
 
 /**
@@ -107,7 +124,7 @@ export function prepareWorkflowContext(sources: SourceDocument[], mode: ContextM
     : ranked;
   const documentLimit = mode === "compact" ? 4 : 10;
   const chunkLimit = mode === "compact" ? 6 : 12;
-  const budget = mode === "compact" ? WORKFLOW_RETRY_CHAR_BUDGET : WORKFLOW_CONTEXT_CHAR_BUDGET;
+  const budget = resolveWorkflowContextBudget(mode);
   const reserveSlots = Math.min(SETUP_RESERVE_SLOTS, documentLimit);
   const baseSelection = preferred.slice(0, documentLimit);
   const baseIds = new Set(baseSelection.map(({ source }) => source.id));
@@ -138,13 +155,28 @@ export function prepareWorkflowContext(sources: SourceDocument[], mode: ContextM
     })
     .slice(0, chunkLimit);
 
-  const blocks: string[] = [];
+  // Compact coverage index: every ranked document is represented by path +
+  // headings (~1 line each), so the model sees the whole inventory while
+  // full excerpts are budgeted to the most relevant chunks only.
+  const indexCap = Math.max(500, budget - 2000);
+  const indexLines: string[] = [];
+  let indexChars = 0;
+  for (const { source } of ranked) {
+    const headings = source.headings.slice(0, 6).map((heading) => heading.slice(0, 80)).join("; ");
+    const line = `- ${source.path}${headings ? ` | ${headings}` : ""}`;
+    if (indexChars + line.length + 1 > indexCap && indexLines.length) break;
+    indexLines.push(line);
+    indexChars += line.length + 1;
+  }
+  const indexBlock = `===== SOURCE INDEX (${indexLines.length}/${ranked.length} files, headings only) =====\n${indexLines.join("\n")}`;
+
+  const blocks: string[] = [indexBlock];
   const includedNames = new Set<string>();
   const includedIds = new Set<string>();
-  let characters = 0;
+  let characters = indexBlock.length;
   for (const { chunk } of chunks) {
     const header = chunkBlock(chunk, "");
-    const separatorLength = blocks.length ? 2 : 0;
+    const separatorLength = 2;
     const remaining = budget - characters - separatorLength - header.length;
     if (remaining < 200) break;
     const block = chunkBlock(chunk, chunk.content.slice(0, remaining));
@@ -157,7 +189,7 @@ export function prepareWorkflowContext(sources: SourceDocument[], mode: ContextM
   return {
     payload: blocks.join("\n\n"),
     characters,
-    chunks: blocks.length,
+    chunks: blocks.length - 1,
     sourceNames: [...includedNames],
     selectedSourceIds: [...includedIds],
     setupEvidence,

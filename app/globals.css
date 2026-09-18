@@ -271,6 +271,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visib
 
 .workflow-status { display: grid; width: 100%; grid-template-columns: 40px minmax(0, 1fr); align-items: center; gap: 12px; padding: 20px 26px; white-space: normal; }
 .workflow-status > div { min-width: 0; }
+.workflow-error-mark { display: grid; width: 36px; height: 36px; place-items: center; border: 1px solid rgba(243, 126, 115, .4); border-radius: 50%; background: rgba(135, 42, 36, .18); color: #efa49d; font-size: 18px; font-weight: 700; }
 .workflow-status .state-spinner { width: 32px; height: 32px; }
 .workflow-status span { color: var(--muted2); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
 .workflow-status strong { display: block; margin-top: 4px; color: var(--text-strong); font-size: 17px; font-weight: 550; line-height: 1.35; }

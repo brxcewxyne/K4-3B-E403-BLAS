@@ -161,11 +161,21 @@ async function requestResponsesAPI(kind: ModelKind, system: string, user: string
       })
     });
   } catch (error) {
-    const timeout = error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError");
-    console.error("OpenCode Go request failed", { kind, timeout, timeoutMs, durationMs: Date.now() - startedAt, requestLabel: options.requestLabel || kind, error: error instanceof Error ? error.message : "Unknown network error" });
-    throw timeout
-      ? new AppError("AI_TIMEOUT", "The AI provider took too long to respond.", 504)
-      : new AppError("AI_PROVIDER_UNAVAILABLE", "The AI provider could not be reached.", 503);
+    const aborted = error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError");
+    const elapsedMs = Date.now() - startedAt;
+    if (aborted) {
+      // Our own AbortSignal fired: application timeout. A Vercel function
+      // timeout instead kills the invocation with no further logs, and a
+      // provider error surfaces below with its HTTP status — all three stay distinct.
+      console.error("OpenCode Go request aborted", { kind, reason: "application_timeout", timeoutMs, elapsedMs, requestLabel: options.requestLabel || kind });
+    } else {
+      console.error("OpenCode Go request failed", { kind, timeoutMs, elapsedMs, requestLabel: options.requestLabel || kind, error: error instanceof Error ? error.message : "Unknown network error" });
+    }
+    if (!aborted) throw new AppError("AI_PROVIDER_UNAVAILABLE", "The AI provider could not be reached.", 503);
+    if (kind === "workflow") {
+      throw new AppError("AI_APPLICATION_TIMEOUT", `Workflow generation timed out at the application limit (${Math.round(timeoutMs / 1000)}s). Try again with fewer source files.`, 504);
+    }
+    throw new AppError("AI_TIMEOUT", "The AI provider took too long to respond.", 504);
   }
 
   console.info("OpenCode Go request completed", { kind, status: response.status, durationMs: Date.now() - startedAt, requestLabel: options.requestLabel || kind });
