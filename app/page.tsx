@@ -157,15 +157,15 @@ export default function Home() {
   }
 
   return (
-    <main className={`app-shell ${workflowOpen ? "has-workflow-open" : ""}`}>
+    <main className="app-shell">
       <BackgroundVideo />
       <TopBar title={labTitle} completed={progress.completedStepIds.length} total={workflow?.steps.length || 0} />
       <nav className="panel-tabs" aria-label="Workspace panels">{(["sources", "chat"] as Panel[]).map((item) => <button type="button" key={item} className={panel === item ? "active" : ""} onClick={() => setPanel(item)}>{item[0].toUpperCase() + item.slice(1)}</button>)}</nav>
-      <div className={`workspace active-${panel}`}>
+      <div className={`workspace active-${panel} ${workflowOpen ? "workflow-open" : "workflow-closed"}`}>
         <SourceSidebar sources={sources} selectedId={selectedSourceId} repository={repository} onSelect={selectSource} onOpen={openSource} onAdd={() => setModalOpen(true)} />
         <ChatPanel messages={messages} thinking={thinking} error={chatError} disabled={!sources.length} onSend={sendMessage} onCitation={openCitation} onAdd={() => setModalOpen(true)} onDismissError={() => setChatError("")} />
+        <WorkflowPanel workflow={workflow} progress={progress} selectedId={selectedStepId} loading={workflowLoading} error={workflowError} hasSources={Boolean(sources.length)} open={workflowOpen} onOpenChange={setWorkflowOpen} onSelect={setSelectedStepId} onSetCurrent={setCurrentStep} onComplete={completeCurrent} onPrevious={() => moveCurrent(-1)} onNext={() => moveCurrent(1)} onRetry={() => void runWorkflow(sources, repository)} />
       </div>
-      <WorkflowPanel workflow={workflow} progress={progress} selectedId={selectedStepId} loading={workflowLoading} error={workflowError} hasSources={Boolean(sources.length)} open={workflowOpen} onOpenChange={setWorkflowOpen} onSelect={setSelectedStepId} onSetCurrent={setCurrentStep} onComplete={completeCurrent} onPrevious={() => moveCurrent(-1)} onNext={() => moveCurrent(1)} onRetry={() => void runWorkflow(sources, repository)} />
       {modalOpen ? <AddMaterialsModal onClose={() => setModalOpen(false)} onRepository={addRepository} onFiles={addFiles} onPaste={addPaste} /> : null}
       {readerSource ? <SourceReader source={readerSource} section={readerTarget?.section} excerpt={readerTarget?.excerpt} onClose={() => setReaderTarget(null)} /> : null}
       <Toast message={toast} />

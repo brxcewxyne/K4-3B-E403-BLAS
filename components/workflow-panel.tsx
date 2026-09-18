@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { CheckIcon } from "./icons";
 import type { LabProgress, LabWorkflow } from "@/lib/shared/types";
 
@@ -22,7 +22,8 @@ type Props = {
 };
 
 export function WorkflowPanel({ workflow, progress, selectedId, loading, error, hasSources, open, onOpenChange, onSelect, onSetCurrent, onComplete, onPrevious, onNext, onRetry }: Props) {
-  // Escape closes. No focus trap: this is a non-modal docked panel.
+  const [goalOpen, setGoalOpen] = useState(false);
+  // Escape closes. No focus trap: this is a non-modal layout column, not a dialog.
   useEffect(() => {
     if (!open) return;
     const close = (event: KeyboardEvent) => { if (event.key === "Escape") onOpenChange(false); };
@@ -46,7 +47,10 @@ export function WorkflowPanel({ workflow, progress, selectedId, loading, error, 
     return (
       <>
         <div className="workflow-side-meta">
-          <div className="goal-row"><div><span>Goal</span><strong>{workflow.goal || workflow.title}</strong></div><span>{completed}/{total}</span></div>
+          <button type="button" className="goal-toggle" onClick={() => setGoalOpen((value) => !value)} aria-expanded={goalOpen} aria-label="Toggle goal summary">
+            <span>Goal</span><em>{completed}/{total}</em><i aria-hidden="true">{goalOpen ? "▴" : "▾"}</i>
+          </button>
+          <p className={`goal-text ${goalOpen ? "" : "clamp"}`}>{workflow.goal || workflow.title}</p>
           <div className="progress-track" role="progressbar" aria-valuenow={completed} aria-valuemin={0} aria-valuemax={total}><i style={{ width: `${pct}%` }} /></div>
         </div>
         {current ? (
@@ -123,33 +127,35 @@ export function WorkflowPanel({ workflow, progress, selectedId, loading, error, 
   }
 
   return (
-    <div className={`workflow-side-layer ${open ? "is-open" : ""}`}>
-      <button
-        type="button"
-        className="workflow-trigger"
-        aria-expanded={open}
-        aria-controls="workflow-side-panel"
-        onClick={() => onOpenChange(!open)}
-      >
-        <span className="workflow-trigger-dot" aria-hidden="true" />
-        Workflow
-        {total ? <em>{completed}/{total}</em> : null}
-        <span aria-hidden="true">{open ? "×" : "→"}</span>
-      </button>
-      <aside
-        id="workflow-side-panel"
-        className={`workflow-side glass-panel ${open ? "open" : ""}`}
-        role="complementary"
-        aria-label="Lab workflow checklist"
-        aria-hidden={!open}
-        data-lenis-prevent
-      >
-        <header className="workflow-side-head">
-          <div><span className="kicker">Workflow</span><h2>{workflow?.title || "Checklist"}</h2></div>
-          <button type="button" className="icon-button" onClick={() => onOpenChange(false)} aria-label="Close workflow panel">✕</button>
-        </header>
-        {body()}
-      </aside>
+    <div className={`workflow-col ${open ? "is-open" : ""}`}>
+      {!open ? (
+        <button
+          type="button"
+          className="workflow-trigger"
+          aria-expanded={false}
+          aria-controls="workflow-side-panel"
+          onClick={() => onOpenChange(true)}
+        >
+          <span className="workflow-trigger-dot" aria-hidden="true" />
+          Workflow
+          {total ? <em>{completed}/{total}</em> : null}
+          <span aria-hidden="true">→</span>
+        </button>
+      ) : (
+        <aside
+          id="workflow-side-panel"
+          className="workflow-side glass-panel open"
+          role="complementary"
+          aria-label="Lab workflow checklist"
+          data-lenis-prevent
+        >
+          <header className="workflow-side-head">
+            <div><span className="kicker">Workflow</span><h2>{workflow?.title || "Checklist"}</h2></div>
+            <button type="button" className="icon-button" onClick={() => onOpenChange(false)} aria-label="Close workflow panel">✕</button>
+          </header>
+          {body()}
+        </aside>
+      )}
     </div>
   );
 }
