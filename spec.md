@@ -1,3 +1,34 @@
+## §6. Bốn đường đi của trải nghiệm
+
+- **Happy path**
+  - User nhập repo hoặc upload `.md/.mdx`.
+  - Hệ thống đọc source, tổng hợp thành workflow theo thứ tự.
+  - Mỗi step có Goal, Requirements, What to do, How to do it, Done when và Sources.
+  - AI trả lời theo `currentStepId` và dẫn citation liên quan.
+
+- **Low-confidence**
+  - Khi tài liệu chưa đủ rõ về thứ tự, requirement hoặc cách làm, AI không khẳng định chắc chắn.
+  - Hệ thống nêu phần chưa chắc và dẫn các source liên quan để user kiểm tra.
+
+- **Failure / không có căn cứ**
+  - Nếu source không có đủ thông tin, AI không tự bịa command, requirement hoặc success criteria.
+  - Hệ thống báo rõ là chưa đủ căn cứ.
+  - Nếu workflow generation lỗi, Sources và Chat vẫn phải dùng được.
+
+- **Correction**
+  - User có thể đổi step đang làm bằng `Set as current`.
+  - `currentStepId` là tiến độ thật, `selectedStepId` chỉ là step đang xem.
+  - AI sử dụng current step mới trong các câu hỏi tiếp theo.
+
+- **Ngoài phạm vi**
+  - AI không tự chạy code, sửa repo, thêm requirement hoặc quyết định thay user khi source không đủ rõ.
+  - Chỉ hỗ trợ trong phạm vi tài liệu đã ingest.
+
+- **Case đặc thù domain**
+  - Nếu nhiều Markdown mâu thuẫn nhau, hệ thống hiển thị conflict và dẫn cả hai source.
+  - Không tự chọn một nguồn là đúng nếu không có căn cứ.
+
+
 ## §7. Kiểm thử
 
 - Chiều chất lượng + định nghĩa kiểm chứng được:
